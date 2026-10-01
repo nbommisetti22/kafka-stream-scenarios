@@ -1,0 +1,50 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: transaction-processor
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: transaction-processor
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      isolation-level: read_committed      # only see committed transactional writes
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # ErrorHandlingDeserializer catches poison pills instead of looping forever
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      max-poll-records: 100
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: com.bank.kafka.common.event
+        spring.json.use.type.headers: false
+        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: com.bank.kafka.common.serde.DltAwareJsonSerializer
+      transaction-id-prefix: txn-processor-${random.uuid}-
+      acks: all
+      properties:
+        enable.idempotence: true
+        spring.json.add.type.headers: false
+
+banking:
+  topics:
+    partitions: 3
+    replicas: 1
+  processor:
+    concurrency: 3
+    max-retries: 3
+    initial-backoff: 500ms
+    channel-limits:
+      ATM: 2000
+      MOBILE: 10000
+      ONLINE: 25000
+      BRANCH: 100000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

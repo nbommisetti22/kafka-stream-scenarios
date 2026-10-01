@@ -1,0 +1,37 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: ledger-streams-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    streams:
+      application-id: ledger-streams-service     # = consumer group id + prefix of internal topics
+      state-dir: ${STATE_DIR:${java.io.tmpdir}/kafka-streams/${server.port}}
+      replication-factor: 1
+      properties:
+        processing.guarantee: exactly_once_v2    # atomic: state store + output + offsets
+        num.stream.threads: 2
+        commit.interval.ms: 1000
+        num.standby.replicas: 0                  # >0 keeps warm copies of state on other instances
+        statestore.cache.max.bytes: 10485760
+        application.server: ${banking.ledger.advertised-host}:${server.port}  # for interactive queries
+        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        default.deserialization.exception.handler: org.apache.kafka.streams.errors.LogAndContinueExceptionHandler
+
+banking:
+  topics:
+    partitions: 3
+    replicas: 1
+  ledger:
+    advertised-host: ${HOSTNAME_OVERRIDE:localhost}
+    overdraft-limit: 0
+    summary-window: 1h
+    summary-grace: 5m
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

@@ -1,0 +1,37 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: notification-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      isolation-level: read_committed
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      max-poll-records: 50
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: com.bank.kafka.common.event
+        spring.json.use.type.headers: false
+    producer:   # used by the retry-topic machinery to forward failed records
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: com.bank.kafka.common.serde.DltAwareJsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+
+banking:
+  topics:
+    partitions: 3
+    replicas: 1
+  notifications:
+    simulated-failure-rate: ${NOTIFICATION_FAILURE_RATE:0.3}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

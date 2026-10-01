@@ -1,0 +1,36 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: fraud-detection-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    streams:
+      application-id: fraud-detection-service
+      state-dir: ${STATE_DIR:${java.io.tmpdir}/kafka-streams/${server.port}}
+      replication-factor: 1
+      properties:
+        processing.guarantee: exactly_once_v2
+        num.stream.threads: 3                    # one thread per input partition
+        commit.interval.ms: 500
+        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        default.deserialization.exception.handler: org.apache.kafka.streams.errors.LogAndContinueExceptionHandler
+
+banking:
+  topics:
+    partitions: 3
+    replicas: 1
+  fraud:
+    large-amount-threshold: 10000
+    velocity-window: 1m
+    velocity-max-transactions: 5
+    travel-window: 30m
+    mule-window: 30m
+    mule-min-amount: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
