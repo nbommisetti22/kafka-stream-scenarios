@@ -1,0 +1,1462 @@
+<title>Kafka Banking Scenarios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a ledger console. Header strip, then the live pipeline board (diagram + controls | state tabs),
+   then the scenario index as list + detail, then three small concept labs. */
+:root {
+  --paper: #f3f6f4;
+  --surface: #ffffff;
+  --sunken: #e9eeeb;
+  --ink: #142320;
+  --muted: #586a65;
+  --line: #d3ddd9;
+  --accent: #0b6b58;        /* ledger green: services, primary actions */
+  --accent-soft: #d6ece6;
+  --topic: #3d52b0;         /* topics / the log */
+  --topic-soft: #e0e5f7;
+  --ok: #1d7f47;
+  --warn: #a8670f;
+  --bad: #bb3b34;
+  --ok-soft: #dcf0e3;
+  --warn-soft: #f6e8cf;
+  --bad-soft: #f6dedc;
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d1513; --surface: #14201d; --sunken: #101a18; --ink: #e2ebe8; --muted: #93a6a0; --line: #263632;
+    --accent: #45c2a6; --accent-soft: #163a33; --topic: #95a7f2; --topic-soft: #1d2647;
+    --ok: #57c787; --warn: #e2aa4f; --bad: #f2776f; --ok-soft: #173826; --warn-soft: #3b2c12; --bad-soft: #401e1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0d1513; --surface: #14201d; --sunken: #101a18; --ink: #e2ebe8; --muted: #93a6a0; --line: #263632;
+  --accent: #45c2a6; --accent-soft: #163a33; --topic: #95a7f2; --topic-soft: #1d2647;
+  --ok: #57c787; --warn: #e2aa4f; --bad: #f2776f; --ok-soft: #173826; --warn-soft: #3b2c12; --bad-soft: #401e1c;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 var(--font-body);
+  padding-inline: 16px;
+  padding-block: 0 64px;
+}
+.wrap { max-width: 1240px; margin-inline: auto; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 80%; text-wrap: balance; margin: 0; line-height: 1.1; }
+h2 { font-size: 1.65rem; font-weight: 750; }
+h3 { font-size: 1.15rem; font-weight: 700; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+a { color: var(--accent); }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eyebrow { font: 600 0.72rem/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- header ---------- */
+header.top { padding-block: 40px 28px; display: grid; gap: 14px; border-bottom: 1px solid var(--line); }
+header.top h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; font-stretch: 72%; letter-spacing: -0.01em; }
+header.top .lede { max-width: 66ch; color: var(--muted); font-size: 1.05rem; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 28px; font-family: var(--font-mono); font-size: 0.82rem; color: var(--muted); }
+.facts b { color: var(--ink); font-weight: 600; font-size: 1rem; margin-right: 4px; }
+.jump { display: flex; flex-wrap: wrap; gap: 8px; }
+.jump a { text-decoration: none; font-size: 0.85rem; padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; color: var(--ink); background: var(--surface); }
+.jump a:hover { border-color: var(--accent); }
+
+section.block { padding-block: 40px 8px; display: grid; gap: 18px; }
+.section-head { display: grid; gap: 6px; max-width: 72ch; }
+.section-head p { color: var(--muted); }
+
+/* ---------- simulator ---------- */
+.board { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 980px) { .board { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+.diagram-scroll { overflow-x: auto; }
+.diagram-scroll svg { display: block; width: 100%; min-width: 700px; height: auto; }
+.narration { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 10px 14px; border-top: 1px solid var(--line); min-height: 46px; font-size: 0.92rem; }
+.narration .who { font: 600 0.75rem var(--font-mono); color: var(--accent); white-space: nowrap; }
+.narration > span:nth-child(2) { flex: 1 1 240px; min-width: 0; }
+.clock { margin-left: auto; font: 500 0.78rem var(--font-mono); color: var(--muted); white-space: nowrap; }
+
+svg .svc rect { fill: var(--surface); stroke: var(--accent); stroke-width: 1.5; }
+svg .svc .name { fill: var(--ink); font: 700 13.5px var(--font-display); font-stretch: 85%; }
+svg .svc .sub { fill: var(--muted); font: 10px var(--font-mono); }
+svg .svc.active rect { fill: var(--accent-soft); stroke-width: 2.5; }
+svg .svc.retrying rect { fill: var(--warn-soft); stroke: var(--warn); }
+svg .tp > rect.shell { fill: var(--topic-soft); stroke: var(--topic); stroke-width: 1.2; }
+svg .tp.dlt > rect.shell { stroke-dasharray: 4 3; }
+svg .tp .tname { fill: var(--topic); font: 600 10px var(--font-mono); }
+svg .tp .cell { fill: var(--surface); stroke: var(--topic); stroke-width: 0.6; }
+svg .tp .cell.hit { fill: var(--topic); }
+svg .tp .ctext { fill: var(--muted); font: 9.5px var(--font-mono); }
+svg .edge { fill: none; stroke: var(--line); stroke-width: 1.6; }
+svg .edge.lit { stroke: var(--topic); }
+svg .elabel { fill: var(--muted); font: 9.5px var(--font-mono); }
+svg .dot { stroke: var(--surface); stroke-width: 2; }
+svg .arrow { fill: var(--line); }
+
+.controls { display: grid; gap: 12px; padding: 14px; border-top: 1px solid var(--line); }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font: 600 0.7rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.field select, .field input[type="number"], .field input[type="text"] {
+  width: 100%; padding: 7px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper);
+}
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.check { display: inline-flex; gap: 6px; align-items: center; font-size: 0.86rem; color: var(--muted); }
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 0.88rem; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.5; cursor: progress; }
+.btn.small { padding: 4px 9px; font-size: 0.8rem; }
+.sep { width: 1px; align-self: stretch; background: var(--line); }
+
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 10px 12px; cursor: pointer; font-size: 0.86rem; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.tabs .count { font: 500 0.72rem var(--font-mono); margin-left: 4px; color: var(--muted); }
+.tabpane { max-height: 560px; overflow: auto; }
+.empty { padding: 18px 14px; color: var(--muted); font-size: 0.9rem; }
+
+.log { list-style: none; margin: 0; padding: 0; }
+.log li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 0.86rem; }
+.log li.fresh { animation: fresh 1.2s ease-out; }
+@keyframes fresh { from { background: var(--topic-soft); } to { background: transparent; } }
+.log .where { grid-column: 1 / -1; font: 500 0.74rem var(--font-mono); color: var(--topic); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.log .where .t { font-weight: 600; }
+.log .what { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
+.log .note { grid-column: 1 / -1; color: var(--muted); font-size: 0.8rem; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 99px; font: 600 0.7rem var(--font-mono); letter-spacing: 0.03em; vertical-align: 1px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--topic-soft); color: var(--topic); }
+.pill.acc { background: var(--accent-soft); color: var(--accent); }
+
+table.kv { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+table.kv th, table.kv td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.kv th { font: 600 0.7rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+table.kv td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+table.kv th.num { text-align: right; }
+.store-note { padding: 10px 14px; font-size: 0.8rem; color: var(--muted); border-bottom: 1px solid var(--line); }
+
+/* ---------- presets strip ---------- */
+.presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.presets .btn { display: inline-flex; gap: 6px; align-items: center; }
+.presets .btn .tag { font: 600 0.68rem var(--font-mono); color: var(--muted); }
+
+/* ---------- scenario index ---------- */
+.index { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .index { grid-template-columns: minmax(0, 1fr); } }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters button { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 4px 11px; font-size: 0.82rem; cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.scn-list { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow: auto; }
+.scn-list button { width: 100%; text-align: left; display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 2px 8px; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer; }
+.scn-list button:hover { background: var(--sunken); }
+.scn-list button[aria-current="true"] { background: var(--accent-soft); }
+.scn-list .sid { font: 600 0.78rem var(--font-mono); color: var(--accent); grid-row: span 2; padding-top: 2px; }
+.scn-list .stitle { font-weight: 600; font-size: 0.9rem; }
+.scn-list .sconcept { font-size: 0.78rem; color: var(--muted); }
+.detail { padding: 22px; display: grid; gap: 16px; }
+.detail .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.detail h3 { font-size: 1.55rem; font-stretch: 78%; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.two > div { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.two p { color: var(--ink); }
+pre.code { margin: 0; padding: 14px 16px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; font: 0.8rem/1.6 var(--font-mono); }
+pre.code .c { color: var(--muted); }
+pre.code .k { color: var(--accent); font-weight: 600; }
+pre.code .s { color: var(--topic); }
+.path { font: 0.8rem var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+
+/* ---------- labs ---------- */
+.labs { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+.lab { padding: 18px; display: grid; gap: 14px; align-content: start; }
+.lab > p { color: var(--muted); font-size: 0.9rem; }
+.lanes { display: grid; gap: 6px; }
+.lane { display: grid; grid-template-columns: 2.6em minmax(0, 1fr); gap: 8px; align-items: center; }
+.lane .lname { font: 600 0.75rem var(--font-mono); color: var(--topic); }
+.lane .cells { display: flex; gap: 4px; overflow-x: auto; min-height: 34px; padding: 3px; background: var(--sunken); border-radius: 4px; }
+.chip { flex: none; display: grid; place-items: center; min-width: 54px; padding: 3px 6px; border-radius: 3px; font: 500 0.68rem/1.25 var(--font-mono); background: var(--topic-soft); color: var(--topic); border: 1px solid transparent; text-align: center; }
+.chip.k1 { background: var(--accent-soft); color: var(--accent); }
+.chip.fail { background: var(--bad-soft); color: var(--bad); }
+.chip.wait { background: var(--warn-soft); color: var(--warn); }
+.chip.done { background: var(--ok-soft); color: var(--ok); }
+.chip.ghost { background: none; color: var(--muted); border: 1px dashed var(--line); text-decoration: line-through; }
+.hashline { font: 0.8rem/1.7 var(--font-mono); background: var(--sunken); padding: 10px 12px; border-radius: 4px; overflow-x: auto; white-space: nowrap; }
+.hashline b { color: var(--accent); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 1.8em minmax(0, 1fr); gap: 6px; font-size: 0.86rem; color: var(--muted); padding: 4px 6px; border-radius: 4px; }
+.steps li::before { content: counter(s); font: 600 0.75rem var(--font-mono); padding-top: 2px; }
+.steps li.now { background: var(--accent-soft); color: var(--ink); }
+.steps li.past { color: var(--ink); }
+.outcome { font-size: 0.88rem; padding: 10px 12px; border-radius: 4px; background: var(--sunken); min-height: 2.6em; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 6px 10px; font-size: 0.82rem; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.compare > div { display: grid; gap: 6px; min-width: 0; }
+.compare h4 { margin: 0; font: 600 0.8rem var(--font-mono); }
+.small { font-size: 0.8rem; color: var(--muted); }
+
+footer { padding-block: 40px 0; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); margin-top: 40px; }
+@media (prefers-reduced-motion: reduce) { .log li.fresh { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">nbommisetti22 / kafka-stream-scenarios</span>
+    <h1>Kafka Banking Scenarios</h1>
+    <p class="lede">Send a payment and watch it move through five Spring Boot services and their Kafka topics. The rules, partition numbers and fraud checks on this page follow the code in the repository, so what you see here is what the services do.</p>
+    <div class="facts" id="facts"></div>
+    <nav class="jump" aria-label="Sections">
+      <a href="#simulator">Pipeline simulator</a>
+      <a href="#scenarios">Scenario index</a>
+      <a href="#labs">Concept labs</a>
+    </nav>
+  </header>
+
+  <!-- ================= SIMULATOR ================= -->
+  <section class="block" id="simulator">
+    <div class="section-head">
+      <span class="eyebrow">Live pipeline</span>
+      <h2>Follow one transaction end to end</h2>
+      <p>Each dot is a Kafka record. The three cells on a topic are its partitions; the number is the next offset. Records keyed by the same account always land in the same partition, so they stay in order.</p>
+    </div>
+
+    <div class="presets" id="presets" aria-label="Quick scenarios"></div>
+
+    <div class="board">
+      <div class="panel">
+        <div class="diagram-scroll">
+          <svg id="diagram" viewBox="0 0 960 410" role="img" aria-label="Services and topics of the banking platform">
+            <defs>
+              <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="arrow" d="M0,0 L8,4 L0,8 z"/>
+              </marker>
+            </defs>
+            <g id="edges"></g>
+            <g id="nodes"></g>
+            <g id="dots"></g>
+          </svg>
+        </div>
+        <div class="narration" aria-live="polite">
+          <span class="who" id="narr-who">ready</span>
+          <span id="narr-text">Pick a quick scenario above, or build your own transaction below.</span>
+          <span class="clock" id="clock"></span>
+        </div>
+        <form class="controls" id="txn-form" autocomplete="off">
+          <div class="fields">
+            <div class="field"><label for="f-account">Account</label>
+              <select id="f-account">
+                <option value="ACC-1">ACC-1 (USD)</option>
+                <option value="ACC-2">ACC-2 (USD)</option>
+                <option value="ACC-EUR">ACC-EUR (EUR)</option>
+                <option value="ACC-404">ACC-404 (not opened)</option>
+              </select></div>
+            <div class="field"><label for="f-type">Type</label>
+              <select id="f-type">
+                <option>DEPOSIT</option><option selected>PAYMENT</option><option>WITHDRAWAL</option><option>TRANSFER</option>
+              </select></div>
+            <div class="field" id="to-field"><label for="f-to">Transfer to</label>
+              <select id="f-to"><option>ACC-2</option><option>ACC-1</option><option>ACC-EUR</option></select></div>
+            <div class="field"><label for="f-amount">Amount</label>
+              <input id="f-amount" type="number" step="0.01" value="120.00"></div>
+            <div class="field"><label for="f-currency">Currency</label>
+              <select id="f-currency"><option>USD</option><option>EUR</option><option>GBP</option><option>INR</option><option>JPY</option></select></div>
+            <div class="field"><label for="f-channel">Channel</label>
+              <select id="f-channel"><option>MOBILE</option><option>ONLINE</option><option>ATM</option><option>BRANCH</option></select></div>
+            <div class="field"><label for="f-country">Country</label>
+              <select id="f-country"><option>US</option><option>GB</option><option>SG</option><option>IN</option><option>FR</option></select></div>
+          </div>
+          <div class="row">
+            <button class="btn primary" type="submit" id="send-btn">Send transaction</button>
+            <label class="check"><input type="checkbox" id="f-reuse"> Resubmit last transaction ID</label>
+            <span class="sep" aria-hidden="true"></span>
+            <button class="btn small" type="button" id="poison-btn">Send corrupt JSON</button>
+            <button class="btn small" type="button" id="freeze-btn">Freeze ACC-2</button>
+            <button class="btn small" type="button" id="clock-btn">Advance clock 31 min</button>
+            <label class="check"><input type="checkbox" id="f-smsfail"> SMS gateway down</label>
+            <label class="check"><input type="checkbox" id="f-fast"> Skip animation</label>
+            <button class="btn small" type="button" id="reset-btn">Reset</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="tabs" role="tablist" id="state-tabs">
+          <button role="tab" aria-selected="true" data-tab="log">Event log<span class="count" id="c-log"></span></button>
+          <button role="tab" aria-selected="false" data-tab="ledger">Ledger store<span class="count" id="c-ledger"></span></button>
+          <button role="tab" aria-selected="false" data-tab="alerts">Fraud alerts<span class="count" id="c-alerts"></span></button>
+          <button role="tab" aria-selected="false" data-tab="notes">Notifications<span class="count" id="c-notes"></span></button>
+          <button role="tab" aria-selected="false" data-tab="cache">Accounts</button>
+        </div>
+        <div class="tabpane" id="pane-log"><ul class="log" id="log"></ul></div>
+        <div class="tabpane" id="pane-ledger" hidden>
+          <p class="store-note">State store <code>ledger-balances</code> in ledger-streams-service. In the real service you read it with <code>GET :8083/api/balances/{id}</code> (Interactive Queries).</p>
+          <table class="kv"><thead><tr><th>Account</th><th class="num">Balance</th><th class="num">Txns</th><th>Last transaction</th></tr></thead><tbody id="ledger-body"></tbody></table>
+        </div>
+        <div class="tabpane" id="pane-alerts" hidden><ul class="log" id="alerts"></ul></div>
+        <div class="tabpane" id="pane-notes" hidden><ul class="log" id="notes"></ul></div>
+        <div class="tabpane" id="pane-cache" hidden>
+          <p class="store-note">transaction-processor rebuilds this cache by replaying the compacted <code>bank.accounts</code> topic from offset 0 at start-up.</p>
+          <table class="kv"><thead><tr><th>Account</th><th>Owner</th><th>Currency</th><th>Status</th><th>Partition</th></tr></thead><tbody id="cache-body"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SCENARIO INDEX ================= -->
+  <section class="block" id="scenarios">
+    <div class="section-head">
+      <span class="eyebrow">Scenario index</span>
+      <h2>Every scenario, the concept behind it, and the code</h2>
+      <p>Choose a scenario to read the banking story, the Kafka idea it demonstrates and the code that implements it. Scenarios marked <span class="pill acc">runnable</span> replay in the simulator above.</p>
+    </div>
+    <div class="filters" id="filters" role="group" aria-label="Filter scenarios"></div>
+    <div class="index">
+      <div class="panel"><ul class="scn-list" id="scn-list"></ul></div>
+      <article class="panel detail" id="scn-detail" aria-live="polite"></article>
+    </div>
+  </section>
+
+  <!-- ================= LABS ================= -->
+  <section class="block" id="labs">
+    <div class="section-head">
+      <span class="eyebrow">Concept labs</span>
+      <h2>Three ideas worth seeing in slow motion</h2>
+    </div>
+    <div class="labs">
+      <!-- Partitioner -->
+      <div class="panel lab" id="lab-partition">
+        <h3>Which partition does a key go to?</h3>
+        <p>Kafka's default partitioner hashes the key with murmur2. Same key, same partition, every time. Ordering is guaranteed only inside one partition.</p>
+        <div class="row">
+          <div class="field" style="flex:1 1 140px"><label for="p-key">Record key</label><input id="p-key" type="text" value="ACC-1"></div>
+          <button class="btn" id="p-add" type="button">Produce record</button>
+          <button class="btn small" id="p-clear" type="button">Clear</button>
+        </div>
+        <div class="hashline" id="p-hash"></div>
+        <div class="lanes" id="p-lanes"></div>
+        <p class="small">Try ACC-1 three times, then ACC-2. Each lane keeps its own offsets.</p>
+      </div>
+
+      <!-- Retry -->
+      <div class="panel lab" id="lab-retry">
+        <h3>Blocking vs non-blocking retries</h3>
+        <p>Record #3 fails twice before it succeeds. Watch what happens to the records queued behind it.</p>
+        <div class="row">
+          <button class="btn" id="r-step" type="button">Next tick</button>
+          <button class="btn small" id="r-play" type="button">Play</button>
+          <button class="btn small" id="r-reset" type="button">Reset</button>
+          <span class="small mono" id="r-tick"></span>
+        </div>
+        <div class="compare">
+          <div><h4>Blocking · transaction-processor</h4><div class="lanes" id="r-block"></div><div class="small" id="r-block-out"></div></div>
+          <div><h4>Retry topics · notification-service</h4><div class="lanes" id="r-nonblock"></div><div class="small" id="r-nonblock-out"></div></div>
+        </div>
+        <p class="small">Blocking keeps per-account order, which a ledger needs. Retry topics keep the partition moving, which suits SMS alerts where order matters less.</p>
+      </div>
+
+      <!-- EOS -->
+      <div class="panel lab" id="lab-eos">
+        <h3>What exactly-once really prevents</h3>
+        <p>The processor reads a payment, writes the validated record, then crashes before committing its offset. On restart it reads the same payment again.</p>
+        <div class="row">
+          <div class="seg" role="group" aria-label="Delivery mode">
+            <button type="button" data-mode="alo" aria-pressed="false">At-least-once</button>
+            <button type="button" data-mode="eos" aria-pressed="true">Exactly-once</button>
+          </div>
+          <button class="btn" id="e-step" type="button">Next step</button>
+          <button class="btn small" id="e-reset" type="button">Reset</button>
+        </div>
+        <ol class="steps" id="e-steps"></ol>
+        <div class="lanes">
+          <div class="lane"><span class="lname">valid.</span><div class="cells" id="e-topic"></div></div>
+        </div>
+        <div class="outcome" id="e-out"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Built from the code in <a href="https://github.com/nbommisetti22/kafka-stream-scenarios/tree/claude/upbeat-einstein-pdat59" target="_blank" rel="noopener">kafka-stream-scenarios</a>.
+    The simulator runs in your browser; it follows the services' rules but uses no real broker. Run <code>docker compose up -d</code> and <code>scripts/demo.sh</code> for the real thing.
+  </footer>
+</div>
+
+<!-- ================= CODE SNIPPETS (raw text) ================= -->
+<script type="text/plain" data-code="P1">// BankingCommandService.java
+public CompletableFuture<PublishedEvent> submitTransaction(TransactionRequest req) {
+    TransactionEvent txn = toEvent(req);
+    // key = accountId: every event of one account goes to one partition
+    return publisher.publish(Topics.TRANSACTIONS_REQUESTED, txn.accountId(), txn, "TransactionRequested")
+            .thenApply(r -> PublishedEvent.of(txn.transactionId(), r));
+}</script>
+<script type="text/plain" data-code="P2"># account-service/application.yml
+spring.kafka.producer:
+  acks: all                       # wait for all in-sync replicas
+  retries: 2147483647             # retry until delivery.timeout.ms
+  compression-type: lz4
+  properties:
+    enable.idempotence: true      # broker drops retried duplicates
+    max.in.flight.requests.per.connection: 5</script>
+<script type="text/plain" data-code="P3">// EventPublisher.java
+return transactionalKafkaTemplate.executeInTransaction(ops -> {
+    List<CompletableFuture<SendResult<String, Object>>> futures = events.stream()
+            .map(e -> ops.send(record(topic, e.key(), e.event(), eventType, correlationId)))
+            .toList();
+    // any exception here aborts the transaction: no record becomes visible
+    return futures.stream().map(CompletableFuture::join).toList();
+});</script>
+<script type="text/plain" data-code="P4">// EventPublisher.java
+record.headers()
+      .add(new RecordHeader(BankHeaders.CORRELATION_ID, bytes(correlationId)))
+      .add(new RecordHeader(BankHeaders.SOURCE_SYSTEM, bytes(SOURCE)))
+      .add(new RecordHeader(BankHeaders.EVENT_TYPE, bytes(eventType)));
+
+// TransactionRequestListener.java: copy them onto the output record
+Header header = in.headers().lastHeader(BankHeaders.CORRELATION_ID);
+if (header != null) record.headers().add(header);</script>
+<script type="text/plain" data-code="P5">// BankingTopicsConfig.java
+private NewTopic compacted(String name) {
+    return TopicBuilder.name(name)
+            .partitions(partitions)
+            .replicas(replicas)
+            .compact()                       // keep latest value per key
+            .config(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "60000")
+            .build();
+}</script>
+<script type="text/plain" data-code="P6">// BankingCommandService.java
+/** Tombstone: compaction eventually removes all data for the key. */
+public CompletableFuture<PublishedEvent> deleteCustomer(String customerId) {
+    return publisher.publish(Topics.CUSTOMERS, customerId, null, "CustomerDeleted")
+            .thenApply(r -> PublishedEvent.of(customerId, r));
+}</script>
+<script type="text/plain" data-code="P7">// EventPublisher.java
+return kafkaTemplate.send(record).whenComplete((result, ex) -> {
+    if (ex != null) {
+        log.error("Failed to publish {} key={} to {}", eventType, key, topic, ex);
+    } else {
+        log.info("Published {} key={} -> {}-{}@{}", eventType, key, topic,
+                result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
+    }
+});</script>
+<script type="text/plain" data-code="P8"># account-service/application.yml
+spring.kafka.producer:
+  compression-type: lz4     # smaller batches on the wire
+  batch-size: 32768         # up to 32 KB per partition batch
+  properties:
+    linger.ms: 5            # wait 5 ms to fill a batch
+    delivery.timeout.ms: 120000</script>
+<script type="text/plain" data-code="C1">// TransactionRequestListener.java
+// transaction-id-prefix is set => Boot creates a KafkaTransactionManager and the
+// container wraps each call in a Kafka transaction: output + input offset commit together.
+@KafkaListener(id = "transaction-validator", topics = Topics.TRANSACTIONS_REQUESTED,
+               concurrency = "${banking.processor.concurrency:3}")
+public void onTransactionRequested(ConsumerRecord<String, TransactionEvent> record) {
+    ValidationResult result = validator.validate(txn);   // may throw -> rollback
+    if (result.valid()) send(record, Topics.TRANSACTIONS_VALIDATED, txn.validated());
+    else                send(record, Topics.TRANSACTIONS_REJECTED, txn.rejected(result.reason()));
+}</script>
+<script type="text/plain" data-code="C2"># transaction-processor/application.yml
+spring.kafka.consumer:
+  group-id: transaction-processor
+  isolation-level: read_committed
+  properties:
+    partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+banking.processor.concurrency: 3     # 3 consumers = 1 per partition</script>
+<script type="text/plain" data-code="C3">// ErrorHandlingConfig.java
+ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(props.maxRetries());
+backOff.setInitialInterval(500);   // 500 ms, 1 s, 2 s ...
+backOff.setMultiplier(2.0);
+DefaultAfterRollbackProcessor<Object, Object> processor =
+        new DefaultAfterRollbackProcessor<>(recoverer, backOff, template, true);
+
+// TransactionValidator.java
+AccountEvent account = accounts.get(txn.accountId())
+        .orElseThrow(() -> new AccountNotFoundException(txn.accountId()));  // transient</script>
+<script type="text/plain" data-code="C4"># transaction-processor/application.yml
+value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+properties:
+  spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+
+// DltAwareJsonSerializer.java: forward the original bytes untouched
+if (data instanceof byte[] raw) return raw;</script>
+<script type="text/plain" data-code="C5">// ErrorHandlingConfig.java
+new DeadLetterPublishingRecoverer(template, (record, ex) ->
+        // same partition number on bank.transactions.requested.DLT
+        new TopicPartition(record.topic() + props.dltSuffix(), record.partition()));
+// headers added: kafka_dlt-exception-fqcn, -message, -stacktrace, -original-topic/-partition/-offset</script>
+<script type="text/plain" data-code="C6">// TransactionValidator.java
+if (txn.currency() == null || !props.supportedCurrencies().contains(txn.currency())) {
+    return ValidationResult.reject("UNSUPPORTED_CURRENCY: " + txn.currency());
+}
+BigDecimal limit = props.limitFor(txn.channel());   // ATM 2000, MOBILE 10000, ONLINE 25000
+if (txn.amount().compareTo(limit) > 0) {
+    return ValidationResult.reject("LIMIT_EXCEEDED: " + txn.channel() + " limit is " + limit);
+}</script>
+<script type="text/plain" data-code="C7">// TransactionRequestListener.java
+if (dedup.isDuplicate(txn.transactionId())) {
+    log.warn("Duplicate transaction {} ignored", txn.transactionId());
+    return;
+}
+...
+// only remember the id once the Kafka transaction really commits
+TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+    public void afterCommit() { dedup.markProcessed(transactionId); }
+});</script>
+<script type="text/plain" data-code="C8">// AccountCacheListener.java
+@KafkaListener(id = "account-cache-loader", topics = Topics.ACCOUNTS,
+        groupId = "transaction-processor-account-cache-#{T(java.util.UUID).randomUUID()}")
+public void onAccount(ConsumerRecord<String, AccountEvent> record) {
+    if (record.value() == null) cache.remove(record.key());   // tombstone
+    else cache.put(record.value());
+}
+
+@Override
+public void onPartitionsAssigned(Map<TopicPartition, Long> assignments, ConsumerSeekCallback callback) {
+    callback.seekToBeginning(assignments.keySet());              // replay the whole table
+}</script>
+<script type="text/plain" data-code="N1">// FraudAlertListener.java
+@RetryableTopic(attempts = "4",
+        backoff = @Backoff(delay = 1000, multiplier = 2.0, maxDelay = 10000),
+        sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC)
+@KafkaListener(id = "fraud-alert-notifier", topics = Topics.FRAUD_ALERTS)
+public void onFraudAlert(FraudAlert alert) { gateway.send("SMS", ...); }
+
+@DltHandler
+public void onDeadLetter(ConsumerRecord<String, FraudAlert> record) { /* escalate */ }</script>
+<script type="text/plain" data-code="N2">// TransactionReceiptListener.java
+@KafkaListener(id = "transaction-receipts", groupId = "notification-receipts",
+        topics = Topics.TRANSACTIONS_POSTED, containerFactory = "batchFactory")
+public void onPostedBatch(List<ConsumerRecord<String, TransactionEvent>> records, Acknowledgment ack) {
+    for (int i = 0; i < records.size(); i++) {
+        try { gateway.send("PUSH", ...); }
+        catch (RuntimeException e) {
+            // commit records before i, retry from i: no duplicate receipts
+            throw new BatchListenerFailedException("Receipt failed", e, i);
+        }
+    }
+    ack.acknowledge();
+}</script>
+<script type="text/plain" data-code="N3">// Three independent consumer groups read bank.transactions.posted:
+//   application.id = fraud-detection-service      (Kafka Streams)
+//   groupId        = notification-receipts         (batch listener)
+// and ledger-streams-service consumes validated -> posted itself.
+// Each group has its own committed offsets, so each sees every record.</script>
+<script type="text/plain" data-code="N4">// ListenerConfig.java
+factory.getContainerProperties().setConsumerRebalanceListener(new ConsumerAwareRebalanceListener() {
+    public void onPartitionsRevokedBeforeCommit(Consumer<?, ?> c, Collection<TopicPartition> parts) {
+        log.info("Partitions revoked: {}", parts);
+    }
+    public void onPartitionsAssigned(Consumer<?, ?> c, Collection<TopicPartition> parts) {
+        log.info("Partitions assigned: {}", parts);
+    }
+});</script>
+<script type="text/plain" data-code="N5">// RejectedTransactionListener.java
+public void onRejected(@Payload TransactionEvent txn,
+                       @Header(KafkaHeaders.RECEIVED_KEY) String accountId,
+                       @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
+                       @Header(KafkaHeaders.OFFSET) long offset,
+                       @Header(name = BankHeaders.CORRELATION_ID, required = false) byte[] correlationId)</script>
+<script type="text/plain" data-code="S1">// LedgerProcessor.java (FixedKeyProcessor + KeyValueStore)
+BalanceSnapshot current = balances.get(record.key());
+BigDecimal newBalance = current.balance().add(txn.signedAmount());
+if (!txn.type().isCredit() && newBalance.compareTo(overdraftLimit.negate()) < 0) {
+    context.forward(record.withValue(txn.rejected("INSUFFICIENT_FUNDS: available " + current.balance())));
+    return;
+}
+balances.put(record.key(), current.apply(txn, newBalance));
+context.forward(record.withValue(txn.posted(newBalance)));</script>
+<script type="text/plain" data-code="S2"># ledger-streams-service/application.yml
+spring.kafka.streams.properties:
+  processing.guarantee: exactly_once_v2   # store changelog + output + offsets in one transaction
+  commit.interval.ms: 1000</script>
+<script type="text/plain" data-code="S3">// LedgerTopology.java
+Map<String, KStream<String, TransactionEvent>> outcome = booked.split(Named.as("outcome-"))
+        .branch((accountId, txn) -> txn.status() == TransactionStatus.POSTED, Branched.as("posted"))
+        .defaultBranch(Branched.as("rejected"));
+outcome.get("outcome-posted").to(Topics.TRANSACTIONS_POSTED, ...);
+outcome.get("outcome-rejected").to(Topics.TRANSACTIONS_REJECTED, ...);</script>
+<script type="text/plain" data-code="S4">// LedgerTopology.java: second processor connected to the same store
+posted.processValues(() -> new BalanceLookupProcessor(LEDGER_STORE), Named.as("balance-lookup"), LEDGER_STORE)
+      .to(Topics.BALANCES, Produced.with(keySerde, BankSerdes.balance()));   // compacted topic</script>
+<script type="text/plain" data-code="S5">// LedgerTopology.java
+posted.filter((accountId, txn) -> txn.type() == TransactionType.TRANSFER)
+      .map((accountId, txn) -> KeyValue.pair(txn.counterpartyAccountId(), txn.creditLeg()))
+      .to(Topics.TRANSACTIONS_VALIDATED, ...);   // re-keyed: lands on the target account's partition</script>
+<script type="text/plain" data-code="S6">// LedgerTopology.java: KStream-KTable join (co-partitioned topics)
+KTable<String, AccountEvent> accounts = builder.table(Topics.ACCOUNTS, ...);
+posted.join(accounts, EnrichedTransaction::of, Joined.with(keySerde, txnSerde, BankSerdes.account()))</script>
+<script type="text/plain" data-code="S7">// LedgerTopology.java: KStream-GlobalKTable join on a foreign key
+GlobalKTable<String, CustomerProfile> customers = builder.globalTable(Topics.CUSTOMERS, ...);
+...
+.leftJoin(customers,
+        (accountId, enriched) -> enriched.customerId(),     // key into the global table
+        (enriched, customer) -> enriched.withCustomer(customer))
+.to(Topics.TRANSACTIONS_ENRICHED, ...);</script>
+<script type="text/plain" data-code="S8">// LedgerTopology.java
+posted.groupByKey(Grouped.with("activity-by-account", keySerde, txnSerde))
+      .windowedBy(TimeWindows.ofSizeAndGrace(Duration.ofHours(1), Duration.ofMinutes(5)))
+      .aggregate(AccountActivitySummary::empty, (id, txn, s) -> s.add(id, txn), ...)
+      .suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()))
+      .toStream()
+      .to(Topics.ACCOUNT_ACTIVITY_SUMMARY, ...);   // one final summary per hour</script>
+<script type="text/plain" data-code="S9">// TransactionTimestampExtractor.java
+public long extract(ConsumerRecord<Object, Object> record, long partitionTime) {
+    if (record.value() instanceof TransactionEvent txn && txn.timestamp() != null) {
+        return txn.timestamp().toEpochMilli();   // when the customer paid, not when Kafka got it
+    }
+    return record.timestamp() >= 0 ? record.timestamp() : partitionTime;
+}</script>
+<script type="text/plain" data-code="S10">// BalanceQueryService.java
+KeyQueryMetadata md = streams.queryMetadataForKey(LEDGER_STORE, accountId, Serdes.String().serializer());
+if (!self.equals(md.activeHost())) {          // another instance owns this account's partition
+    return restClient.get().uri("http://{h}:{p}/api/balances/{id}", ...).retrieve().body(BalanceSnapshot.class);
+}
+return Optional.ofNullable(ledgerStore().get(accountId));</script>
+<script type="text/plain" data-code="S11">// BalanceQueryService.java
+ReadOnlyWindowStore<String, AccountActivitySummary> store = streams().store(
+        StoreQueryParameters.fromNameAndType(ACTIVITY_STORE, QueryableStoreTypes.windowStore()));
+try (WindowStoreIterator<AccountActivitySummary> it = store.fetch(accountId, now.minus(lookBack), now)) { ... }</script>
+<script type="text/plain" data-code="S12">// StreamsConfig.java
+factoryBean.setStateListener((newState, oldState) -> log.info("Kafka Streams state {} -> {}", oldState, newState));
+factoryBean.setStreamsUncaughtExceptionHandler(ex ->
+        StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.REPLACE_THREAD);</script>
+<script type="text/plain" data-code="F1">// FraudDetectionTopology.java
+KStream<String, FraudAlert> largeAmount = posted
+        .filter((accountId, txn) -> txn.amount().compareTo(rules.largeAmountThreshold()) >= 0)
+        .mapValues((accountId, txn) -> FraudAlert.of(accountId, txn.transactionId(), "LARGE_AMOUNT",
+                Severity.HIGH, ..., txn.timestamp()));</script>
+<script type="text/plain" data-code="F2">// FraudDetectionTopology.java
+posted.filter((accountId, txn) -> !txn.type().isCredit())
+      .groupByKey(...)
+      .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(1)))
+      .count(Materialized.as(VELOCITY_STORE).withCachingDisabled())   // see every update
+      .toStream()
+      .filter((window, count) -> count == rules.velocityMaxTransactions() + 1L)  // alert once</script>
+<script type="text/plain" data-code="F3">// ImpossibleTravelProcessor.java
+if (current.type() == TransactionType.TRANSFER_IN) return;          // sender's country, not ours
+TransactionEvent previous = lastSeen.get(record.key());
+if (previous != null && !previous.country().equals(current.country())) {
+    Duration gap = Duration.between(previous.timestamp(), currentTime).abs();
+    if (gap.compareTo(window) <= 0) context.forward(record.withValue(FraudAlert.of(..., Severity.CRITICAL, ...)));
+}
+if (previous == null || !currentTime.isBefore(previous.timestamp())) lastSeen.put(record.key(), current);</script>
+<script type="text/plain" data-code="F4">// FraudDetectionTopology.java: KStream-KStream windowed join
+largeDeposits.join(largeDebits,
+        (deposit, debit) -> FraudAlert.of(..., "MONEY_MULE", Severity.HIGH, ...),
+        JoinWindows.ofTimeDifferenceWithNoGrace(Duration.ofMinutes(30)).before(Duration.ZERO),  // debit after deposit
+        StreamJoined.with(keySerde, txnSerde, txnSerde).withStoreName("money-mule-join-store"));</script>
+<script type="text/plain" data-code="F5">// FraudDetectionTopology.java
+KStream<String, FraudAlert> alerts = largeAmount.merge(velocity).merge(impossibleTravel).merge(moneyMule);
+alerts.to(Topics.FRAUD_ALERTS, ...);
+alerts.filter((accountId, alert) -> alert.severity().opensCase()).to(Topics.FRAUD_CASES, ...);</script>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const REPO = "https://github.com/nbommisetti22/kafka-stream-scenarios/blob/claude/upbeat-einstein-pdat59/";
+const PARTS = 3;
+
+/* ---------- Kafka's default partitioner (murmur2), checked against a real broker ---------- */
+function murmur2(str) {
+  const b = new TextEncoder().encode(str);
+  const m = 0x5bd1e995, r = 24, len = b.length;
+  let h = (0x9747b28c ^ len) | 0;
+  const n4 = len >> 2;
+  for (let i = 0; i < n4; i++) {
+    const j = i * 4;
+    let k = b[j] | (b[j + 1] << 8) | (b[j + 2] << 16) | (b[j + 3] << 24);
+    k = Math.imul(k, m); k ^= k >>> r; k = Math.imul(k, m);
+    h = Math.imul(h, m); h ^= k;
+  }
+  const t = n4 << 2;
+  switch (len & 3) {
+    case 3: h ^= b[t + 2] << 16; // fallthrough
+    case 2: h ^= b[t + 1] << 8;  // fallthrough
+    case 1: h ^= b[t]; h = Math.imul(h, m);
+  }
+  h ^= h >>> 13; h = Math.imul(h, m); h ^= h >>> 15;
+  return h | 0;
+}
+const partitionOf = key => (murmur2(key) & 0x7fffffff) % PARTS;
+
+/* ======================================================================
+   DIAGRAM
+   ====================================================================== */
+const SVC = {
+  acct:   { x: 20,  y: 30,  name: "account-service",   sub: "REST · producers" },
+  proc:   { x: 400, y: 30,  name: "transaction-processor", sub: "Spring Kafka · EOS" },
+  ledger: { x: 780, y: 30,  name: "ledger-streams",    sub: "Kafka Streams · IQ" },
+  fraud:  { x: 400, y: 300, name: "fraud-detection",   sub: "Kafka Streams" },
+  notif:  { x: 20,  y: 300, name: "notification",      sub: "retry topics · batch" },
+};
+const TOPIC = {
+  requested: { x: 215, y: 38,  name: "transactions.requested", full: "bank.transactions.requested" },
+  validated: { x: 595, y: 38,  name: "transactions.validated", full: "bank.transactions.validated" },
+  dlt:       { x: 405, y: 172, name: "requested.DLT",          full: "bank.transactions.requested.DLT", dlt: true },
+  rejected:  { x: 215, y: 172, name: "transactions.rejected",  full: "bank.transactions.rejected" },
+  balances:  { x: 785, y: 172, name: "balances (compacted)",   full: "bank.balances" },
+  posted:    { x: 785, y: 308, name: "transactions.posted",    full: "bank.transactions.posted" },
+  alerts:    { x: 215, y: 308, name: "fraud.alerts",           full: "bank.fraud.alerts" },
+};
+const EDGES = {
+  "acct-requested":   "M170,58 L213,58",
+  "requested-proc":   "M355,58 L398,58",
+  "proc-validated":   "M550,58 L593,58",
+  "validated-ledger": "M735,58 L778,58",
+  "proc-dlt":         "M475,86 L475,170",
+  "proc-rejected":    "M430,86 C430,128 300,124 300,170",
+  "ledger-rejected":  "M800,86 C790,140 420,128 330,170",
+  "ledger-balances":  "M855,86 L855,170",
+  "ledger-posted":    "M930,58 C958,58 958,328 927,328",
+  "ledger-validated": "M815,30 C800,2 690,2 672,36",
+  "posted-fraud":     "M785,328 L552,328",
+  "fraud-alerts":     "M400,328 L357,328",
+  "alerts-notif":     "M215,328 L172,328",
+  "posted-notif":     "M855,348 C855,402 95,402 95,358",
+  "rejected-notif":   "M260,212 C255,262 130,252 112,298",
+};
+const EDGE_LABEL = { "ledger-validated": ["transfer credit leg", 744, 12], "posted-notif": ["receipts (own consumer group)", 470, 392] };
+const NS = "http://www.w3.org/2000/svg";
+const mk = (tag, attrs, parent) => { const el = document.createElementNS(NS, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); parent && parent.appendChild(el); return el; };
+
+function drawDiagram() {
+  const eg = $("#edges"), ng = $("#nodes");
+  for (const [id, d] of Object.entries(EDGES)) mk("path", { d, class: "edge", id: "e-" + id, "marker-end": "url(#arr)" }, eg);
+  for (const [id, [t, x, y]] of Object.entries(EDGE_LABEL)) { const tx = mk("text", { x, y, class: "elabel", "text-anchor": "middle" }, eg); tx.textContent = t; }
+  for (const [id, s] of Object.entries(SVC)) {
+    const g = mk("g", { class: "svc", id: "n-" + id }, ng);
+    mk("rect", { x: s.x, y: s.y, width: id === "proc" ? 150 : 150, height: 56, rx: 6 }, g);
+    const t = mk("text", { x: s.x + 12, y: s.y + 24, class: "name" }, g); t.textContent = s.name;
+    const u = mk("text", { x: s.x + 12, y: s.y + 42, class: "sub" }, g); u.textContent = s.sub;
+  }
+  for (const [id, tp] of Object.entries(TOPIC)) {
+    const g = mk("g", { class: "tp" + (tp.dlt ? " dlt" : ""), id: "t-" + id }, ng);
+    mk("rect", { x: tp.x, y: tp.y, width: 140, height: 40, rx: 4, class: "shell" }, g);
+    const t = mk("text", { x: tp.x + 7, y: tp.y + 13, class: "tname" }, g); t.textContent = tp.name;
+    for (let p = 0; p < PARTS; p++) {
+      const cx = tp.x + 7 + p * 43;
+      mk("rect", { x: cx, y: tp.y + 19, width: 40, height: 15, rx: 2, class: "cell", id: `c-${id}-${p}` }, g);
+      const ct = mk("text", { x: cx + 4, y: tp.y + 30, class: "ctext", id: `ct-${id}-${p}` }, g);
+      ct.textContent = `p${p} 0`;
+    }
+  }
+}
+
+function fast() { return reduceMotion || $("#f-fast").checked; }
+const sleep = ms => new Promise(res => setTimeout(res, fast() ? 0 : ms));
+
+function flashNode(id, cls = "active", ms = 420) {
+  const el = $("#n-" + id); if (!el) return;
+  el.classList.add(cls); setTimeout(() => el.classList.remove(cls), fast() ? 30 : ms);
+}
+
+async function travel(edgeId, color) {
+  const path = $("#e-" + edgeId);
+  if (!path) return;
+  path.classList.add("lit");
+  if (fast()) { path.classList.remove("lit"); return; }
+  const dot = mk("circle", { r: 6.5, class: "dot", fill: color }, $("#dots"));
+  const len = path.getTotalLength(), dur = Math.max(320, Math.min(900, len * 2.4));
+  await new Promise(res => {
+    const t0 = performance.now();
+    const frame = now => {
+      const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      const p = path.getPointAtLength(e * len); dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
+      k < 1 ? requestAnimationFrame(frame) : res();
+    };
+    requestAnimationFrame(frame);
+  });
+  dot.remove(); path.classList.remove("lit");
+}
+
+/* ======================================================================
+   SIMULATION STATE (mirrors the services' rules)
+   ====================================================================== */
+const RULES = {
+  currencies: ["USD", "EUR", "GBP", "INR"],
+  limits: { ATM: 2000, MOBILE: 10000, ONLINE: 25000, BRANCH: 100000 },
+  maxRetries: 3,
+  large: 10000, velocityMax: 5, travelMin: 30, muleMin: 30, muleAmount: 5000,
+};
+const CREDIT = new Set(["DEPOSIT", "TRANSFER_IN", "REFUND"]);
+const T0 = Date.parse("2026-10-01T09:00:00Z");
+let S;
+
+function freshState() {
+  return {
+    clock: T0, seq: 0, lastTxnId: null,
+    offsets: {},             // topic -> [o0, o1, o2]
+    accounts: {
+      "ACC-1":   { owner: "Ada Lovelace", currency: "USD", status: "ACTIVE" },
+      "ACC-2":   { owner: "Ada Lovelace", currency: "USD", status: "ACTIVE" },
+      "ACC-EUR": { owner: "Tomás Ruiz",   currency: "EUR", status: "ACTIVE" },
+    },
+    processed: new Set(),    // DeduplicationCache
+    ledger: {},              // ledger-balances store
+    velocity: {},            // velocity-counts window store: acct|minute -> count
+    lastSeen: {},            // last-location store
+    deposits: {},            // money-mule join buffer
+    log: [], alerts: [], notes: [],
+  };
+}
+
+const money = n => Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const hhmm = t => new Date(t).toISOString().slice(11, 19);
+function narrate(who, text) { $("#narr-who").textContent = who; $("#narr-text").innerHTML = text; }
+
+function produce(topicId, key, text, extra = {}) {
+  const full = TOPIC[topicId] ? TOPIC[topicId].full : topicId;
+  const p = partitionOf(key);
+  const offs = (S.offsets[full] ||= [0, 0, 0]);
+  const offset = offs[p]++;
+  if (TOPIC[topicId]) {
+    $(`#ct-${topicId}-${p}`).textContent = `p${p} ${offs[p]}`;
+    const cell = $(`#c-${topicId}-${p}`); cell.classList.add("hit"); setTimeout(() => cell.classList.remove("hit"), fast() ? 60 : 650);
+  }
+  S.log.unshift({ topic: full, p, offset, key, text, time: S.clock, ...extra, fresh: true });
+  renderLog();
+  return { p, offset };
+}
+
+/* ---------- pipeline ---------- */
+function newTxn(f) {
+  const id = f.reuse && S.lastTxnId ? S.lastTxnId : "txn-" + String(++S.seq).padStart(3, "0");
+  S.lastTxnId = id;
+  return { transactionId: id, accountId: f.account, type: f.type, amount: Number(f.amount), currency: f.currency,
+           channel: f.channel, country: f.country, counterparty: f.type === "TRANSFER" ? f.to : null, timestamp: S.clock };
+}
+const describe = t => `${t.type} ${money(t.amount)} ${t.currency}` + (t.counterparty ? ` → ${t.counterparty}` : "") + (t.channel ? ` · ${t.channel}` : "") + (t.country ? ` · ${t.country}` : "");
+
+function validate(t) {
+  if (!(t.amount > 0)) return { ok: false, reason: "INVALID_AMOUNT: amount must be positive" };
+  if (Math.abs(Math.round(t.amount * 100) - t.amount * 100) > 1e-6) return { ok: false, reason: "INVALID_AMOUNT: more than 2 decimal places" };
+  if (!RULES.currencies.includes(t.currency)) return { ok: false, reason: "UNSUPPORTED_CURRENCY: " + t.currency };
+  const limit = RULES.limits[t.channel] ?? 50000;
+  if (t.amount > limit) return { ok: false, reason: `LIMIT_EXCEEDED: ${t.channel} limit is ${limit}` };
+  const acc = S.accounts[t.accountId];
+  if (!acc) return { transient: t.accountId };
+  const check = (a, id) => a.status !== "ACTIVE" ? `ACCOUNT_${a.status}: ${id}` : a.currency !== t.currency ? `CURRENCY_MISMATCH: account ${id} is in ${a.currency}` : null;
+  const bad = check(acc, t.accountId); if (bad) return { ok: false, reason: bad };
+  if (t.type === "TRANSFER") {
+    if (!t.counterparty || t.counterparty === t.accountId) return { ok: false, reason: "INVALID_TRANSFER: counterparty must be a different account" };
+    const target = S.accounts[t.counterparty];
+    if (!target) return { transient: t.counterparty };
+    const b2 = check(target, t.counterparty); if (b2) return { ok: false, reason: "COUNTERPARTY_" + b2 };
+  }
+  return { ok: true };
+}
+
+async function runTxn(t) {
+  narrate("account-service", `POST /api/transactions → key <b>${esc(t.accountId)}</b> hashes to partition ${partitionOf(t.accountId)}`);
+  flashNode("acct");
+  await travel("acct-requested", "var(--accent)");
+  produce("requested", t.accountId, describe(t), { id: t.transactionId, kind: "info" });
+  await sleep(180);
+  await travel("requested-proc", "var(--topic)");
+  flashNode("proc");
+
+  if (S.processed.has(t.transactionId)) {
+    narrate("transaction-processor", `<b>${esc(t.transactionId)}</b> was already processed. Duplicate ignored, offset committed, nothing produced.`);
+    S.log.unshift({ topic: "transaction-processor", p: "-", offset: "-", key: t.accountId, text: `Duplicate ${t.transactionId} ignored`, time: S.clock, kind: "warn", note: "DeduplicationCache: resubmitted business key", fresh: true });
+    renderLog(); return;
+  }
+  const v = validate(t);
+  if (v.transient) {
+    for (let i = 1; i <= RULES.maxRetries; i++) {
+      narrate("transaction-processor", `Account <b>${esc(v.transient)}</b> not in cache yet. Transaction rolled back, retry ${i}/${RULES.maxRetries} after ${500 * 2 ** (i - 1)} ms`);
+      flashNode("proc", "retrying", 700); await sleep(750);
+    }
+    await travel("proc-dlt", "var(--bad)");
+    produce("dlt", t.accountId, describe(t), { id: t.transactionId, kind: "bad", note: `kafka_dlt-exception: AccountNotFoundException (${v.transient}) after ${RULES.maxRetries} retries` });
+    narrate("transaction-processor", "Retries exhausted. Record published to the DLT on the same partition, offset committed so the partition moves on.");
+    return;
+  }
+  if (!v.ok) {
+    await travel("proc-rejected", "var(--warn)");
+    produce("rejected", t.accountId, describe(t), { id: t.transactionId, kind: "warn", note: v.reason });
+    markProcessed(t);
+    narrate("transaction-processor", `Business rule failed: <b>${esc(v.reason)}</b>. A rejection is an event, not an error.`);
+    await notifyRejected(t, v.reason);
+    return;
+  }
+  await travel("proc-validated", "var(--accent)");
+  produce("validated", t.accountId, describe(t), { id: t.transactionId, kind: "ok", note: "written + input offset committed in one Kafka transaction" });
+  markProcessed(t);
+  narrate("transaction-processor", "Validated. Output record and consumer offset committed atomically (exactly-once).");
+  await sleep(150);
+  await ledger(t);
+}
+
+function markProcessed(t) { S.processed.add(t.transactionId); }
+
+async function ledger(t) {
+  await travel("validated-ledger", "var(--topic)");
+  flashNode("ledger");
+  const snap = S.ledger[t.accountId] || { balance: 0, count: 0, last: null, currency: t.currency };
+  if (snap.last === t.transactionId) { narrate("ledger-streams", `Transaction ${esc(t.transactionId)} already applied.`); return; }
+  const credit = CREDIT.has(t.type);
+  const next = snap.balance + (credit ? t.amount : -t.amount);
+  if (!credit && next < 0) {
+    const reason = `INSUFFICIENT_FUNDS: available ${money(snap.balance)} ${snap.currency}`;
+    narrate("ledger-streams", `State store says ${esc(t.accountId)} has ${money(snap.balance)}. Branch → <b>rejected</b>.`);
+    await travel("ledger-rejected", "var(--warn)");
+    produce("rejected", t.accountId, describe(t), { id: t.transactionId, kind: "warn", note: reason });
+    await notifyRejected(t, reason);
+    return;
+  }
+  S.ledger[t.accountId] = { balance: next, count: snap.count + 1, last: t.transactionId, currency: snap.currency };
+  renderLedger();
+  narrate("ledger-streams", `Store updated: ${esc(t.accountId)} = <b>${money(next)}</b>. Branch → <b>posted</b>, snapshot → balances.`);
+  await Promise.all([travel("ledger-posted", "var(--accent)"), travel("ledger-balances", "var(--topic)")]);
+  produce("posted", t.accountId, describe(t), { id: t.transactionId, kind: "ok", note: `balanceAfter ${money(next)}` });
+  produce("balances", t.accountId, `${t.accountId} balance ${money(next)} (${snap.count + 1} txns)`, { kind: "info", note: "compacted: only the latest value per account is kept" });
+
+  const followUps = [];
+  if (t.type === "TRANSFER") {
+    const leg = { ...t, transactionId: t.transactionId + "-IN", accountId: t.counterparty, type: "TRANSFER_IN", counterparty: t.accountId };
+    narrate("ledger-streams", `Transfer debit posted. Credit leg re-keyed to <b>${esc(leg.accountId)}</b> (partition ${partitionOf(leg.accountId)}) and written back to validated.`);
+    await travel("ledger-validated", "var(--accent)");
+    produce("validated", leg.accountId, describe(leg), { id: leg.transactionId, kind: "ok", note: "credit leg produced by the ledger" });
+    followUps.push(leg);
+  }
+  await Promise.all([receipt(t), fraud(t)]);
+  for (const leg of followUps) { await sleep(150); await ledger(leg); }
+}
+
+async function receipt(t) {
+  await travel("posted-notif", "var(--accent)");
+  flashNode("notif");
+  note("PUSH", t.accountId, `${t.type} of ${money(t.amount)} ${t.currency} posted. New balance: ${money(S.ledger[t.accountId].balance)}`);
+}
+async function notifyRejected(t, reason) {
+  await travel("rejected-notif", "var(--warn)");
+  flashNode("notif");
+  note("EMAIL", t.accountId, `Your ${t.type} of ${money(t.amount)} ${t.currency} was declined: ${reason}`);
+}
+
+async function fraud(t) {
+  await travel("posted-fraud", "var(--topic)");
+  flashNode("fraud");
+  const found = [];
+  const debit = !CREDIT.has(t.type);
+  // F1 large amount
+  if (t.amount >= RULES.large) found.push(["LARGE_AMOUNT", "HIGH", `${t.type} of ${money(t.amount)} ${t.currency} exceeds ${money(RULES.large)}`]);
+  // F2 velocity: tumbling 1-minute windows on debits
+  if (debit) {
+    const win = Math.floor(t.timestamp / 60000);
+    const k = t.accountId + "|" + win;
+    const c = (S.velocity[k] = (S.velocity[k] || 0) + 1);
+    if (c === RULES.velocityMax + 1) found.push(["VELOCITY", "MEDIUM", `${c} debits between ${hhmm(win * 60000)} and ${hhmm((win + 1) * 60000)}`]);
+  }
+  // F3 impossible travel (Processor API store), ignoring transfer credit legs
+  if (t.country && t.type !== "TRANSFER_IN") {
+    const prev = S.lastSeen[t.accountId];
+    if (prev && prev.country !== t.country) {
+      const gap = Math.abs(t.timestamp - prev.time) / 60000;
+      if (gap <= RULES.travelMin) found.push(["IMPOSSIBLE_TRAVEL", "CRITICAL", `Used in ${prev.country} and ${t.country} within ${Math.floor(gap)} min`]);
+    }
+    if (!prev || t.timestamp >= prev.time) S.lastSeen[t.accountId] = { country: t.country, time: t.timestamp };
+  }
+  // F4 money mule: large credit, then large debit within 30 min (stream-stream join)
+  if (t.amount >= RULES.muleAmount) {
+    if (!debit) (S.deposits[t.accountId] ||= []).push(t);
+    else for (const d of S.deposits[t.accountId] || []) {
+      if (t.timestamp >= d.timestamp && t.timestamp - d.timestamp <= RULES.muleMin * 60000)
+        found.push(["MONEY_MULE", "HIGH", `Deposit of ${money(d.amount)} followed by ${t.type} of ${money(t.amount)} within ${RULES.muleMin} min`]);
+    }
+  }
+  if (!found.length) { narrate("fraud-detection", `4 rules checked for ${esc(t.transactionId)}: no alert.`); return; }
+  for (const [rule, sev, desc] of found) {
+    await travel("fraud-alerts", "var(--bad)");
+    produce("alerts", t.accountId, `${rule} on ${t.accountId}`, { kind: sev === "MEDIUM" ? "warn" : "bad", note: desc + (["HIGH", "CRITICAL"].includes(sev) ? " · also sent to bank.fraud.cases" : "") });
+    S.alerts.unshift({ rule, sev, desc, account: t.accountId, txn: t.transactionId, time: S.clock, fresh: true });
+    renderAlerts();
+    narrate("fraud-detection", `<b>${rule}</b> (${sev}) on ${esc(t.accountId)}: ${esc(desc)}`);
+    await sms(t.accountId, sev, desc);
+  }
+}
+
+async function sms(account, sev, desc) {
+  await travel("alerts-notif", "var(--bad)");
+  flashNode("notif");
+  if ($("#f-smsfail").checked) {
+    const hops = ["bank.fraud.alerts-retry (1 s)", "bank.fraud.alerts-retry (2 s)", "bank.fraud.alerts-retry (4 s)", "bank.fraud.alerts-dlt"];
+    for (const h of hops) {
+      const isDlt = h.endsWith("dlt");
+      S.log.unshift({ topic: h.split(" ")[0], p: partitionOf(account), offset: "·", key: account, text: isDlt ? "Alert dead-lettered, escalated to call centre" : "SMS failed, alert moved to retry topic", time: S.clock, kind: isDlt ? "bad" : "warn", note: isDlt ? "@DltHandler invoked" : "main topic keeps flowing (non-blocking retry) · " + h.split(" ")[1].replace(/[()]/g, "") + " delay", fresh: true });
+      renderLog();
+      flashNode("notif", "retrying", 500); await sleep(420);
+    }
+    narrate("notification", "SMS gateway down: 4 attempts across retry topics, then the DLT handler escalated the alert.");
+    return;
+  }
+  note("SMS", account, `Security alert [${sev}] ${desc}. Reply NO if this was not you.`);
+}
+
+function note(channel, account, msg) { S.notes.unshift({ channel, account, msg, time: S.clock, fresh: true }); renderNotes(); }
+
+/* ---------- queue so presets and clicks never overlap ---------- */
+let chain = Promise.resolve(), busy = 0;
+function enqueue(fn) {
+  busy++; setBusy();
+  chain = chain.then(fn).catch(e => console.error(e)).finally(() => { busy--; setBusy(); });
+  return chain;
+}
+function setBusy() { $("#send-btn").disabled = busy > 2; }
+
+function tick(sec) { S.clock += sec * 1000; renderClock(); }
+function sendTxn(f, spacing = 10) { return enqueue(async () => { tick(spacing); await runTxn(newTxn(f)); }); }
+
+function sendPoison() {
+  return enqueue(async () => {
+    tick(10);
+    narrate("account-service", "A buggy client publishes <code>{not json</code> with key ACC-1.");
+    await travel("acct-requested", "var(--bad)");
+    produce("requested", "ACC-1", "{not json", { kind: "bad" });
+    await travel("requested-proc", "var(--bad)");
+    flashNode("proc");
+    narrate("transaction-processor", "ErrorHandlingDeserializer catches the failure. DeserializationException is not retryable, so the record goes straight to the DLT.");
+    await sleep(350);
+    await travel("proc-dlt", "var(--bad)");
+    produce("dlt", "ACC-1", "{not json", { kind: "bad", note: "raw bytes preserved · kafka_dlt-exception-fqcn = DeserializationException" });
+  });
+}
+
+function setStatus(id, status) {
+  return enqueue(async () => {
+    tick(5);
+    S.accounts[id].status = status;
+    narrate("account-service", `${esc(id)} is now <b>${status}</b>. The full account is republished to the compacted topic bank.accounts; every processor instance updates its cache.`);
+    flashNode("acct"); flashNode("proc");
+    S.log.unshift({ topic: "bank.accounts", p: partitionOf(id), offset: "·", key: id, text: `Account ${id} → ${status}`, time: S.clock, kind: "info", note: "compacted: replaces the previous value for this key", fresh: true });
+    renderLog(); renderCache(); updateFreezeBtn();
+    await sleep(300);
+  });
+}
+
+/* ======================================================================
+   RENDERING
+   ====================================================================== */
+const KIND_PILL = { ok: "ok", warn: "warn", bad: "bad", info: "info" };
+function renderLog() {
+  const html = S.log.slice(0, 250).map(e => `
+    <li class="${e.fresh ? "fresh" : ""}">
+      <div class="where"><span class="t">${esc(e.topic)}</span><span>partition ${e.p}</span><span>offset ${e.offset}</span><span>key ${esc(e.key)}</span><span>${hhmm(e.time)}</span></div>
+      <div class="what">${e.id ? `<span class="pill ${KIND_PILL[e.kind] || "info"}">${esc(e.id)}</span> ` : ""}${esc(e.text)}</div>
+      ${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}
+    </li>`).join("");
+  $("#log").innerHTML = html || `<li class="empty">No records yet.</li>`;
+  S.log.forEach(e => e.fresh = false);
+  $("#c-log").textContent = S.log.length;
+}
+function renderLedger() {
+  const rows = Object.entries(S.ledger).sort().map(([id, s]) => `<tr><td class="mono">${esc(id)}</td><td class="num">${money(s.balance)} ${esc(s.currency)}</td><td class="num">${s.count}</td><td class="mono">${esc(s.last)}</td></tr>`).join("");
+  $("#ledger-body").innerHTML = rows || `<tr><td colspan="4" class="empty">No balances yet. Send a deposit.</td></tr>`;
+  $("#c-ledger").textContent = Object.keys(S.ledger).length;
+}
+const SEV_PILL = { MEDIUM: "warn", HIGH: "bad", CRITICAL: "bad" };
+function renderAlerts() {
+  $("#alerts").innerHTML = S.alerts.map(a => `
+    <li class="${a.fresh ? "fresh" : ""}"><div class="where"><span class="t">${esc(a.rule)}</span><span>${esc(a.account)}</span><span>${esc(a.txn)}</span><span>${hhmm(a.time)}</span></div>
+    <div class="what"><span class="pill ${SEV_PILL[a.sev]}">${a.sev}</span> ${esc(a.desc)}</div></li>`).join("") || `<li class="empty">No alerts. Try a quick fraud scenario.</li>`;
+  S.alerts.forEach(a => a.fresh = false);
+  $("#c-alerts").textContent = S.alerts.length;
+}
+const CH_PILL = { PUSH: "ok", EMAIL: "warn", SMS: "bad" };
+function renderNotes() {
+  $("#notes").innerHTML = S.notes.map(n => `
+    <li class="${n.fresh ? "fresh" : ""}"><div class="where"><span class="t">owner-of-${esc(n.account)}</span><span>${hhmm(n.time)}</span></div>
+    <div class="what"><span class="pill ${CH_PILL[n.channel]}">${n.channel}</span> ${esc(n.msg)}</div></li>`).join("") || `<li class="empty">No notifications yet.</li>`;
+  S.notes.forEach(n => n.fresh = false);
+  $("#c-notes").textContent = S.notes.length;
+}
+function renderCache() {
+  $("#cache-body").innerHTML = Object.entries(S.accounts).map(([id, a]) => `
+    <tr><td class="mono">${esc(id)}</td><td>${esc(a.owner)}</td><td>${a.currency}</td>
+    <td><span class="pill ${a.status === "ACTIVE" ? "ok" : "bad"}">${a.status}</span></td><td class="mono">${partitionOf(id)}</td></tr>`).join("")
+    + `<tr><td class="mono">ACC-404</td><td colspan="3" class="small">never opened: not in the cache</td><td class="mono">${partitionOf("ACC-404")}</td></tr>`;
+}
+function renderClock() { $("#clock").textContent = "event time " + new Date(S.clock).toISOString().slice(0, 16).replace("T", " ") + "Z"; }
+function updateFreezeBtn() { $("#freeze-btn").textContent = S.accounts["ACC-2"].status === "ACTIVE" ? "Freeze ACC-2" : "Unfreeze ACC-2"; }
+function resetTopics() {
+  for (const id of Object.keys(TOPIC)) for (let p = 0; p < PARTS; p++) $(`#ct-${id}-${p}`).textContent = `p${p} 0`;
+}
+function renderAll() { renderLog(); renderLedger(); renderAlerts(); renderNotes(); renderCache(); renderClock(); updateFreezeBtn(); }
+
+/* ======================================================================
+   PRESETS (quick scenarios)
+   ====================================================================== */
+const base = { account: "ACC-1", type: "PAYMENT", amount: 20, currency: "USD", channel: "MOBILE", country: "US", to: "ACC-2", reuse: false };
+const tx = o => ({ ...base, ...o });
+const PRESETS = {
+  happy:     { label: "Deposit then pay", tag: "P1", run: () => { sendTxn(tx({ type: "DEPOSIT", amount: 500, channel: "BRANCH" })); sendTxn(tx({ amount: 42.5, merchant: "Coffee" })); } },
+  dedupe:    { label: "Double-click Pay", tag: "C7", run: () => { sendTxn(tx({ amount: 15 })); sendTxn(tx({ amount: 15, reuse: true }), 2); } },
+  atm:       { label: "Over ATM limit", tag: "C6", run: () => sendTxn(tx({ type: "WITHDRAWAL", amount: 2500, channel: "ATM" })) },
+  ccy:       { label: "Unsupported currency", tag: "C6", run: () => sendTxn(tx({ currency: "JPY", amount: 10 })) },
+  nsf:       { label: "Insufficient funds", tag: "S1", run: () => sendTxn(tx({ account: "ACC-2", amount: 99999, channel: "BRANCH" })) },
+  transfer:  { label: "Transfer to ACC-2", tag: "S5", run: () => sendTxn(tx({ type: "TRANSFER", amount: 300, channel: "ONLINE", to: "ACC-2" })) },
+  unknown:   { label: "Unknown account", tag: "C3", run: () => sendTxn(tx({ account: "ACC-404", type: "DEPOSIT", amount: 50 })) },
+  poison:    { label: "Corrupt JSON", tag: "C4", run: () => sendPoison() },
+  frozen:    { label: "Frozen account", tag: "C6", run: () => { if (S.accounts["ACC-2"].status === "ACTIVE") setStatus("ACC-2", "FROZEN"); sendTxn(tx({ account: "ACC-2", amount: 5 })); setStatus("ACC-2", "ACTIVE"); } },
+  large:     { label: "Fraud: large deposit", tag: "F1", run: () => sendTxn(tx({ account: "ACC-2", type: "DEPOSIT", amount: 12000, channel: "BRANCH" })) },
+  velocity:  { label: "Fraud: 6 payments in a minute", tag: "F2", run: () => { enqueue(async () => tick(60 - ((S.clock / 1000) % 60))); for (let i = 0; i < 6; i++) sendTxn(tx({ amount: 3 }), i === 0 ? 1 : 4); } },
+  travel:    { label: "Fraud: US then SG", tag: "F3", run: () => { sendTxn(tx({ amount: 12, country: "US" })); sendTxn(tx({ amount: 30, country: "SG" }), 300); } },
+  mule:      { label: "Fraud: money mule", tag: "F4", run: () => { sendTxn(tx({ account: "ACC-2", type: "DEPOSIT", amount: 8000, channel: "BRANCH" })); sendTxn(tx({ account: "ACC-2", type: "TRANSFER", amount: 7900, channel: "BRANCH", to: "ACC-1" }), 600); } },
+};
+
+/* ======================================================================
+   SCENARIO INDEX
+   ====================================================================== */
+const GROUPS = { P: "Producer", C: "Consumer", N: "Notifications", S: "Streams ledger", F: "Fraud streams" };
+const SCN = [
+  ["P1", "Keep each account's transactions in order", "Message key → partition", "account-service/src/main/java/com/bank/kafka/account/service/BankingCommandService.java",
+   "A customer pays rent, then buys groceries. If the ledger saw them in the wrong order it could reject a payment that should succeed.",
+   "Kafka only orders records inside a partition. Using accountId as the key sends every event of one account to the same partition, so every consumer sees them in the order they were produced.", "happy"],
+  ["P2", "Never charge twice after a network blip", "Idempotent producer", "account-service/src/main/resources/application.yml",
+   "The broker stores a payment but the acknowledgement is lost, so the producer retries.",
+   "With enable.idempotence the producer stamps each batch with a producer id and sequence number. The broker drops a retried batch it already has, so retries never create duplicates and ordering is kept.", null],
+  ["P3", "Pay all employees or none", "Transactional producer", "account-service/src/main/java/com/bank/kafka/account/service/EventPublisher.java",
+   "A payroll file credits 500 employees. A crash half way must not pay only half of them.",
+   "executeInTransaction sends every record inside one Kafka transaction. Consumers with isolation.level=read_committed see all of them after the commit, or none if it aborts.", null],
+  ["P4", "Trace one request across five services", "Record headers", "account-service/src/main/java/com/bank/kafka/account/service/EventPublisher.java",
+   "Support needs to find every event caused by one customer request.",
+   "A correlation id, source system and event type travel as headers, outside the payload. The processor copies them onto every record it produces.", null],
+  ["P5", "Customer and account master data", "Log-compacted topics", "banking-common/src/main/java/com/bank/kafka/common/config/BankingTopicsConfig.java",
+   "A new service must know every account that exists, including ones opened years ago.",
+   "Compaction keeps the latest value per key forever instead of deleting by age. Replaying the topic from offset 0 rebuilds the full table.", null],
+  ["P6", "Right to be forgotten", "Tombstones", "account-service/src/main/java/com/bank/kafka/account/service/BankingCommandService.java",
+   "A customer asks the bank to delete their profile.",
+   "Publishing a null value for the key is a tombstone. Consumers remove the entry, and compaction later removes the key from the log.", null],
+  ["P7", "Fast REST responses", "Asynchronous send with callbacks", "account-service/src/main/java/com/bank/kafka/account/service/EventPublisher.java",
+   "The mobile app should not wait for every broker round trip on the request thread.",
+   "KafkaTemplate.send returns a CompletableFuture. The controller returns it, and the callback logs the partition and offset or the failure.", null],
+  ["P8", "Throughput on payday", "Batching and compression", "account-service/src/main/resources/application.yml",
+   "Salary day multiplies transaction volume.",
+   "linger.ms waits a few milliseconds to fill bigger batches; lz4 compresses each batch. Fewer, larger requests raise throughput for little latency.", null],
+  ["C1", "Validate a payment exactly once", "Exactly-once consume-transform-produce", "transaction-processor/src/main/java/com/bank/kafka/processor/listener/TransactionRequestListener.java",
+   "The processor validates a payment and forwards it. A crash in between must not forward it twice.",
+   "The listener runs inside a Kafka transaction: the output record and the consumer's offset commit together. If anything fails, both are aborted and the input is read again.", "happy"],
+  ["C2", "Scale validation horizontally", "Consumer groups and concurrency", "transaction-processor/src/main/resources/application.yml",
+   "Validation has to keep up as transaction volume grows.",
+   "Consumers in one group split the partitions among themselves. concurrency=3 runs one consumer per partition; more instances trigger a cooperative rebalance.", null],
+  ["C3", "Account opened a moment ago", "Blocking retry with back-off", "transaction-processor/src/main/java/com/bank/kafka/processor/config/ErrorHandlingConfig.java",
+   "A deposit arrives before the AccountOpened event reached the processor's cache.",
+   "The missing account is a transient error. The transaction rolls back and the record is retried after 500 ms, 1 s, 2 s. The partition waits, so per-account order holds.", "unknown"],
+  ["C4", "Corrupt message from a buggy client", "Poison pill handling", "transaction-processor/src/main/resources/application.yml",
+   "One malformed record must not stop every payment behind it.",
+   "ErrorHandlingDeserializer turns a parse failure into a DeserializationException, which is never retried. The record goes to the DLT with its original bytes untouched.", "poison"],
+  ["C5", "Keep failed records for investigation", "Dead letter topic", "transaction-processor/src/main/java/com/bank/kafka/processor/config/ErrorHandlingConfig.java",
+   "Operations needs the failed record, the reason and where it came from.",
+   "DeadLetterPublishingRecoverer writes to bank.transactions.requested.DLT on the same partition, with exception class, message, stack trace and original topic/partition/offset as headers.", "unknown"],
+  ["C6", "Decline a payment over the limit", "Business rejection is an event", "transaction-processor/src/main/java/com/bank/kafka/processor/validation/TransactionValidator.java",
+   "An ATM withdrawal of 2,500 exceeds the 2,000 ATM limit.",
+   "A failed business rule is a normal outcome, published to bank.transactions.rejected so the customer can be told. Only technical failures go to the DLT.", "atm"],
+  ["C7", "Customer double-clicks Pay", "Business-key de-duplication", "transaction-processor/src/main/java/com/bank/kafka/processor/listener/TransactionRequestListener.java",
+   "The app sends the same payment twice with the same transaction id.",
+   "Kafka's exactly-once covers retries inside Kafka, but a resubmission is a new record. The processor remembers processed ids, and only after its transaction commits.", "dedupe"],
+  ["C8", "Local copy of every account", "Compacted topic as a cache", "transaction-processor/src/main/java/com/bank/kafka/processor/listener/AccountCacheListener.java",
+   "Every validator instance needs every account's status and currency.",
+   "Each instance uses its own random group id, so it receives all partitions, and seeks to the beginning on assignment to replay the full table.", "frozen"],
+  ["N1", "SMS provider is down", "Non-blocking retries (@RetryableTopic)", "notification-service/src/main/java/com/bank/kafka/notification/listener/FraudAlertListener.java",
+   "A fraud SMS fails. Other customers' alerts should not wait for it.",
+   "The failed record moves to a retry topic with a delay and is consumed again later. After four attempts it lands in the -dlt topic and @DltHandler escalates. Turn on SMS gateway down in the simulator.", "large"],
+  ["N2", "Push receipts efficiently", "Batch listener + manual ack", "notification-service/src/main/java/com/bank/kafka/notification/listener/TransactionReceiptListener.java",
+   "Every posted transaction gets a push receipt.",
+   "The listener receives a whole poll at once and commits once. BatchListenerFailedException marks the failing record, so earlier ones are committed and not sent twice.", "happy"],
+  ["N3", "Many services, one topic", "Multiple consumer groups", "notification-service/src/main/java/com/bank/kafka/notification/listener/TransactionReceiptListener.java",
+   "Fraud detection and notifications both need every posted transaction.",
+   "Each consumer group has its own offsets, so each one receives the full stream independently. Kafka keeps the data once.", "happy"],
+  ["N4", "See partitions move between instances", "Rebalance listener", "notification-service/src/main/java/com/bank/kafka/notification/config/ListenerConfig.java",
+   "A second notification instance starts during peak hours.",
+   "ConsumerRebalanceListener logs partitions revoked and assigned, the hook for flushing state before ownership changes.", null],
+  ["N5", "Log where a record came from", "Record metadata and custom headers", "notification-service/src/main/java/com/bank/kafka/notification/listener/RejectedTransactionListener.java",
+   "A decline e-mail must be traceable back to its record.",
+   "@Header injects the key, partition, offset and the correlation-id header next to the payload.", "atm"],
+  ["S1", "Debit only if the money is there", "Processor API + state store", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/LedgerProcessor.java",
+   "A payment of 99,999 from an account holding 800.",
+   "A FixedKeyProcessor reads and writes the ledger-balances key-value store. Records are partitioned by account, so one task handles an account at a time with no locks.", "nsf"],
+  ["S2", "No double booking after a crash", "exactly_once_v2", "ledger-streams-service/src/main/resources/application.yml",
+   "The ledger crashes right after updating a balance.",
+   "The store's changelog write, the output records and the input offsets commit in one transaction. After a restart the store is restored to exactly the committed state.", null],
+  ["S3", "Route booked and declined payments", "Branching with split()", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/LedgerTopology.java",
+   "Posted and rejected transactions go to different downstream systems.",
+   "split().branch() routes each record by predicate into named branches, each written to its own topic.", "nsf"],
+  ["S4", "Publish balances to other systems", "Changelog to a compacted topic", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/BalanceLookupProcessor.java",
+   "The card authorisation system needs current balances.",
+   "A second processor attached to the same store emits the latest snapshot to bank.balances, which is compacted so it always holds one value per account.", "happy"],
+  ["S5", "Move money between accounts", "Re-keying and feedback to a topic", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/LedgerTopology.java",
+   "A transfer debits ACC-1 (partition 0) and credits ACC-2 (partition 2).",
+   "After the debit posts, map() re-keys a credit leg to the target account and writes it back to the validated topic, so it lands on the partition that owns ACC-2.", "transfer"],
+  ["S6", "Add the account type to each transaction", "KStream–KTable join", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/LedgerTopology.java",
+   "Analytics wants each transaction with its account type.",
+   "bank.accounts becomes a KTable. Both topics are keyed by accountId with the same partition count (co-partitioned), so the join is local to each task.", null],
+  ["S7", "Add the customer's name and tier", "KStream–GlobalKTable join", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/LedgerTopology.java",
+   "Customers are keyed by customerId, not accountId.",
+   "A GlobalKTable is fully copied to every instance, so it can be joined on any field. A key mapper picks customerId from the record.", null],
+  ["S8", "Hourly activity statement", "Tumbling window + suppress()", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/topology/LedgerTopology.java",
+   "Customers get one summary per hour, not one per transaction.",
+   "Transactions are aggregated in 1-hour windows with 5 minutes grace for late events. suppress(untilWindowCloses) emits a single final result per window.", null],
+  ["S9", "Use the time the customer paid", "Event time (TimestampExtractor)", "banking-common/src/main/java/com/bank/kafka/common/serde/TransactionTimestampExtractor.java",
+   "A card payment made at 23:59 arrives at 00:01.",
+   "The extractor takes the timestamp from the payload, so windows and joins use when it happened, not when Kafka received it.", "velocity"],
+  ["S10", "What is my balance?", "Interactive Queries", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/api/BalanceQueryService.java",
+   "The app asks for a balance; there is no balance database.",
+   "The REST endpoint reads the Streams state store directly. With several instances, metadata says which one owns the key and the request is forwarded there.", "happy"],
+  ["S11", "Activity in the current hour", "Window store query", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/api/BalanceQueryService.java",
+   "Show what happened in windows that are still open.",
+   "fetch(key, from, to) on the window store returns in-progress aggregates before suppress() releases them.", null],
+  ["S12", "Self-healing stream threads", "Uncaught exception handler", "ledger-streams-service/src/main/java/com/bank/kafka/ledger/config/StreamsConfig.java",
+   "An unexpected bug kills a stream thread at 3 a.m.",
+   "REPLACE_THREAD starts a new thread instead of shutting the app down, and the state listener logs every transition.", null],
+  ["F1", "Unusually large transaction", "Stateless filter + mapValues", "fraud-detection-service/src/main/java/com/bank/kafka/fraud/topology/FraudDetectionTopology.java",
+   "A deposit of 12,000 arrives on a savings account.",
+   "Any transaction of 10,000 or more raises a HIGH alert. No state is needed, so it is a plain filter and map.", "large"],
+  ["F2", "Card testing burst", "Windowed count", "fraud-detection-service/src/main/java/com/bank/kafka/fraud/topology/FraudDetectionTopology.java",
+   "A stolen card is tested with six tiny payments in a minute.",
+   "Debits are counted per account in 1-minute tumbling windows. Caching is disabled so every count is seen and the alert fires exactly once, at the sixth.", "velocity"],
+  ["F3", "Card used in two countries", "Processor API + custom store", "fraud-detection-service/src/main/java/com/bank/kafka/fraud/topology/ImpossibleTravelProcessor.java",
+   "A payment in the US, then one in Singapore five minutes later.",
+   "A store keeps the last country per account. A different country within 30 minutes raises a CRITICAL alert. Transfer credit legs are ignored because they carry the sender's country.", "travel"],
+  ["F4", "Money mule", "KStream–KStream windowed join", "fraud-detection-service/src/main/java/com/bank/kafka/fraud/topology/FraudDetectionTopology.java",
+   "8,000 arrives and 7,900 leaves the same account ten minutes later.",
+   "Large credits are joined with large debits on the same key within 30 minutes. before(ZERO) only matches a debit that comes after the deposit.", "mule"],
+  ["F5", "One alert stream, cases for the serious ones", "merge() and filter", "fraud-detection-service/src/main/java/com/bank/kafka/fraud/topology/FraudDetectionTopology.java",
+   "Investigators only want HIGH and CRITICAL alerts.",
+   "The four rule streams merge into bank.fraud.alerts; a filter copies HIGH and CRITICAL ones to bank.fraud.cases.", "travel"],
+].map(([id, title, concept, file, story, how, preset]) => ({ id, title, concept, file, story, how, preset, group: id[0] }));
+
+let filter = "all", currentScn = null;
+function highlight(code) {
+  const lines = esc(code).split("\n");
+  return lines.map(l => {
+    const m = l.match(/(^|\s)(\/\/|#\s)/), ci = m ? m.index + m[1].length : -1;
+    let body = ci >= 0 ? l.slice(0, ci) : l, cmt = ci >= 0 ? `<span class="c">${l.slice(ci)}</span>` : "";
+    body = body.replace(/(&quot;[^&]*?&quot;)/g, '<span class="s">$1</span>')
+               .replace(/(@[A-Za-z]+)/g, '<span class="k">$1</span>');
+    return body + cmt;
+  }).join("\n");
+}
+function renderFilters() {
+  const groups = [["all", "All"], ...Object.entries(GROUPS)];
+  $("#filters").innerHTML = groups.map(([k, v]) => `<button type="button" data-g="${k}" aria-pressed="${filter === k}">${v} <span class="mono small">${k === "all" ? SCN.length : SCN.filter(s => s.group === k).length}</span></button>`).join("");
+}
+function renderList() {
+  const items = SCN.filter(s => filter === "all" || s.group === filter);
+  $("#scn-list").innerHTML = items.map(s => `<li><button type="button" data-id="${s.id}" aria-current="${s.id === currentScn}">
+    <span class="sid">${s.id}</span><span class="stitle">${esc(s.title)}</span><span class="sconcept">${esc(s.concept)}</span></button></li>`).join("");
+}
+function codeFor(id) { const el = document.querySelector(`script[data-code="${id}"]`); return el ? el.textContent.replace(/^\n/, "") : ""; }
+function showScn(id) {
+  const s = SCN.find(x => x.id === id); if (!s) return;
+  currentScn = id; renderList();
+  $("#scn-detail").innerHTML = `
+    <div class="meta"><span class="pill info">${s.id}</span><span class="eyebrow">${GROUPS[s.group]}</span>${s.preset ? '<span class="pill acc">runnable</span>' : ""}</div>
+    <h3>${esc(s.title)}</h3>
+    <div class="two">
+      <div><span class="eyebrow">In the bank</span><p>${esc(s.story)}</p></div>
+      <div><span class="eyebrow">Kafka concept · ${esc(s.concept)}</span><p>${esc(s.how)}</p></div>
+    </div>
+    <pre class="code"><code>${highlight(codeFor(s.id))}</code></pre>
+    <div class="row">
+      ${s.preset ? `<button class="btn primary" type="button" data-run="${s.preset}">Run “${esc(PRESETS[s.preset].label)}” in the simulator</button>` : ""}
+      <a class="path" href="${REPO + s.file}" target="_blank" rel="noopener">${esc(s.file)}</a>
+    </div>`;
+}
+
+/* ======================================================================
+   LAB 1: partitioner
+   ====================================================================== */
+const pLanes = [[], [], []];
+function renderPartitionLab() {
+  const key = $("#p-key").value || "";
+  const h = murmur2(key), pos = h & 0x7fffffff;
+  $("#p-hash").innerHTML = `murmur2("${esc(key)}") = ${h} → &amp; 0x7fffffff = ${pos} → % ${PARTS} = <b>partition ${pos % PARTS}</b>`;
+  $("#p-lanes").innerHTML = pLanes.map((lane, p) => `<div class="lane"><span class="lname">p${p}</span><div class="cells">${
+    lane.map((k, o) => `<span class="chip ${k === "ACC-1" ? "k1" : ""}">${esc(k)}<br>@${o}</span>`).join("")}</div></div>`).join("");
+}
+
+/* ======================================================================
+   LAB 2: retries
+   ====================================================================== */
+const RECS = [1, 2, 3, 4, 5, 6];
+let rTick = 0, rTimer = null;
+function retrySim(tickN) {
+  // Blocking: one record per tick; #3 fails at its 1st and 2nd attempt and blocks the partition.
+  const block = { done: [], queue: [...RECS], note: "" };
+  let attempts3 = 0;
+  for (let t = 0; t < tickN && block.queue.length; t++) {
+    const r = block.queue[0];
+    if (r === 3 && attempts3 < 2) { attempts3++; block.note = `#3 failed (attempt ${attempts3}), retrying in place. #4-#6 wait.`; continue; }
+    block.queue.shift(); block.done.push(r); block.note = `#${r} processed.`;
+  }
+  // Non-blocking: #3 moves to a retry topic and comes back 3 ticks later.
+  const nb = { done: [], queue: [...RECS], retry: [], note: "" };
+  let a3 = 0;
+  for (let t = 0; t < tickN; t++) {
+    const due = nb.retry.find(x => x.at <= t);
+    if (due) {
+      nb.retry = nb.retry.filter(x => x !== due);
+      if (a3 < 2) { a3++; nb.retry.push({ r: 3, at: t + 2 }); nb.note = `#3 failed again on retry topic.`; continue; }
+      nb.done.push(3); nb.note = "#3 finally processed, out of order."; continue;
+    }
+    if (!nb.queue.length) continue;
+    const r = nb.queue.shift();
+    if (r === 3 && a3 === 0) { a3++; nb.retry.push({ r: 3, at: t + 2 }); nb.note = "#3 failed, moved to retry topic. Main partition keeps going."; continue; }
+    nb.done.push(r); nb.note = `#${r} processed.`;
+  }
+  return { block, nb, a3 };
+}
+function renderRetryLab() {
+  const { block, nb } = retrySim(rTick);
+  const chips = (arr, cls) => arr.map(r => `<span class="chip ${cls(r)}">#${r}</span>`).join("");
+  $("#r-tick").textContent = `tick ${rTick}`;
+  $("#r-block").innerHTML = `
+    <div class="lane"><span class="lname">main</span><div class="cells">${chips(block.queue, r => r === 3 && block.queue[0] === 3 && rTick > 2 ? "fail" : (block.queue[0] === 3 && r > 3 ? "wait" : ""))}</div></div>
+    <div class="lane"><span class="lname">done</span><div class="cells">${chips(block.done, () => "done")}</div></div>`;
+  $("#r-nonblock").innerHTML = `
+    <div class="lane"><span class="lname">main</span><div class="cells">${chips(nb.queue, () => "")}</div></div>
+    <div class="lane"><span class="lname">retry</span><div class="cells">${chips(nb.retry.map(x => x.r), () => "fail")}</div></div>
+    <div class="lane"><span class="lname">done</span><div class="cells">${chips(nb.done, () => "done")}</div></div>`;
+  $("#r-block-out").textContent = rTick ? block.note : "Nothing processed yet.";
+  $("#r-nonblock-out").textContent = rTick ? nb.note : "Nothing processed yet.";
+  const finished = !block.queue.length && !nb.queue.length && !nb.retry.length;
+  if (finished) {
+    $("#r-block-out").textContent = `Order: ${block.done.join(", ")} (kept)`;
+    $("#r-nonblock-out").textContent = `Order: ${nb.done.join(", ")} (#3 overtaken)`;
+    stopRetry();
+  }
+  return finished;
+}
+function stopRetry() { clearInterval(rTimer); rTimer = null; $("#r-play").textContent = "Play"; }
+
+/* ======================================================================
+   LAB 3: exactly-once
+   ====================================================================== */
+let eMode = "eos", eStep = 0;
+const E_STEPS = {
+  alo: ["Poll payment txn-042 at offset 7", "Write validated record for txn-042", "Crash before committing offset 7", "Restart: last committed offset is still 6, so offset 7 is read again", "Write validated record for txn-042 again", "Commit offset 7"],
+  eos: ["Begin Kafka transaction, poll txn-042 at offset 7", "Write validated record for txn-042 (inside the transaction)", "Crash before commit: the broker aborts the open transaction", "Restart: offset 7 is read again; the new producer fences the old one", "Write validated record for txn-042 in a new transaction", "Commit: record and offset 7 become visible together"],
+};
+function renderEosLab() {
+  const steps = E_STEPS[eMode];
+  $("#e-steps").innerHTML = steps.map((s, i) => `<li class="${i < eStep - 1 ? "past" : i === eStep - 1 ? "now" : ""}">${esc(s)}</li>`).join("");
+  const recs = [];
+  if (eStep >= 2) recs.push(eMode === "eos" && eStep >= 3 ? "ghost" : eMode === "eos" ? "wait" : "done");
+  if (eStep >= 5) recs.push(eMode === "eos" && eStep < 6 ? "wait" : "done");
+  $("#e-topic").innerHTML = recs.map(c => `<span class="chip ${c}">txn-042${c === "ghost" ? "<br>aborted" : c === "wait" ? "<br>open tx" : ""}</span>`).join("") || `<span class="small" style="padding:6px">empty</span>`;
+  let out = "Step through the failure.";
+  if (eStep >= 6) out = eMode === "eos"
+    ? "A read_committed consumer sees txn-042 <b>once</b>. The aborted copy is skipped, so the ledger books it once."
+    : "Consumers see txn-042 <b>twice</b>. The ledger would book it twice unless something downstream de-duplicates.";
+  else if (eStep >= 3) out = eMode === "eos" ? "The first write belongs to an aborted transaction: invisible to read_committed consumers." : "The first write is already visible to consumers, but the offset was never committed.";
+  $("#e-out").innerHTML = out;
+  $$("#lab-eos .seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === eMode));
+  $("#e-step").disabled = eStep >= steps.length;
+}
+
+/* ======================================================================
+   WIRING
+   ====================================================================== */
+function readForm() {
+  return { account: $("#f-account").value, type: $("#f-type").value, to: $("#f-to").value, amount: $("#f-amount").value,
+           currency: $("#f-currency").value, channel: $("#f-channel").value, country: $("#f-country").value, reuse: $("#f-reuse").checked };
+}
+function syncForm() {
+  $("#to-field").hidden = $("#f-type").value !== "TRANSFER";
+  const acc = $("#f-account").value;
+  if (acc === "ACC-EUR" && $("#f-currency").value === "USD") $("#f-currency").value = "EUR";
+  if (acc !== "ACC-EUR" && $("#f-currency").value === "EUR") $("#f-currency").value = "USD";
+}
+function selectTab(name) {
+  $$("#state-tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
+  ["log", "ledger", "alerts", "notes", "cache"].forEach(t => $("#pane-" + t).hidden = t !== name);
+  try { localStorage.setItem("kbs-tab", name); } catch (e) { /* storage unavailable */ }
+}
+function runPreset(key) {
+  document.getElementById("simulator").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  const tabFor = { large: "alerts", velocity: "alerts", travel: "alerts", mule: "alerts", nsf: "log", transfer: "ledger" };
+  if (tabFor[key]) selectTab(tabFor[key]);
+  PRESETS[key].run();
+}
+function reset() {
+  S = freshState(); resetTopics(); renderAll();
+  narrate("ready", "State cleared. Topics, stores and caches are empty except the three opened accounts.");
+}
+
+function init() {
+  drawDiagram();
+  S = freshState();
+  const services = 5, topics = 12;
+  $("#facts").innerHTML = `<span><b>${services}</b>services</span><span><b>${topics}</b>topics</span><span><b>${PARTS}</b>partitions each</span><span><b>${SCN.length}</b>scenarios</span><span><b>28</b>tests</span>`;
+  $("#presets").innerHTML = Object.entries(PRESETS).map(([k, p]) => `<button class="btn" type="button" data-preset="${k}"><span class="tag">${p.tag}</span>${esc(p.label)}</button>`).join("");
+
+  $("#presets").addEventListener("click", e => { const b = e.target.closest("[data-preset]"); if (b) runPreset(b.dataset.preset); });
+  $("#txn-form").addEventListener("submit", e => { e.preventDefault(); sendTxn(readForm()); });
+  $("#f-type").addEventListener("change", syncForm);
+  $("#f-account").addEventListener("change", syncForm);
+  $("#poison-btn").addEventListener("click", sendPoison);
+  $("#freeze-btn").addEventListener("click", () => setStatus("ACC-2", S.accounts["ACC-2"].status === "ACTIVE" ? "FROZEN" : "ACTIVE"));
+  $("#clock-btn").addEventListener("click", () => { tick(31 * 60); narrate("clock", "Event time moved 31 minutes forward: travel and money-mule windows have expired."); });
+  $("#reset-btn").addEventListener("click", () => enqueue(async () => reset()));
+  $("#state-tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) selectTab(b.dataset.tab); });
+
+  renderFilters(); renderList(); showScn("P1");
+  $("#filters").addEventListener("click", e => { const b = e.target.closest("[data-g]"); if (!b) return; filter = b.dataset.g; renderFilters(); renderList(); const first = SCN.find(s => filter === "all" || s.group === filter); if (first) showScn(first.id); });
+  $("#scn-list").addEventListener("click", e => { const b = e.target.closest("[data-id]"); if (b) showScn(b.dataset.id); });
+  $("#scn-detail").addEventListener("click", e => { const b = e.target.closest("[data-run]"); if (b) runPreset(b.dataset.run); });
+
+  // Lab 1
+  ["ACC-1", "ACC-2", "ACC-1"].forEach(k => pLanes[partitionOf(k)].push(k));
+  $("#p-key").addEventListener("input", renderPartitionLab);
+  $("#p-add").addEventListener("click", () => { const k = $("#p-key").value || "null"; pLanes[partitionOf(k)].push(k); renderPartitionLab(); });
+  $("#p-clear").addEventListener("click", () => { pLanes.forEach(l => l.length = 0); renderPartitionLab(); });
+  renderPartitionLab();
+  // Lab 2
+  $("#r-step").addEventListener("click", () => { rTick++; renderRetryLab(); });
+  $("#r-reset").addEventListener("click", () => { stopRetry(); rTick = 0; renderRetryLab(); });
+  $("#r-play").addEventListener("click", () => {
+    if (rTimer) return stopRetry();
+    $("#r-play").textContent = "Pause";
+    rTimer = setInterval(() => { rTick++; if (renderRetryLab()) stopRetry(); }, reduceMotion ? 250 : 750);
+  });
+  renderRetryLab();
+  // Lab 3
+  $$("#lab-eos .seg button").forEach(b => b.addEventListener("click", () => { eMode = b.dataset.mode; eStep = 0; renderEosLab(); }));
+  $("#e-step").addEventListener("click", () => { eStep++; renderEosLab(); });
+  $("#e-reset").addEventListener("click", () => { eStep = 0; renderEosLab(); });
+  renderEosLab();
+
+  syncForm();
+  try { const t = localStorage.getItem("kbs-tab"); if (t) selectTab(t); } catch (e) { /* storage unavailable */ }
+
+  // Sample data so the page opens in a working state: two deposits, run instantly.
+  renderAll();
+  const wasFast = $("#f-fast").checked; $("#f-fast").checked = true;
+  sendTxn(tx({ type: "DEPOSIT", amount: 2500, channel: "BRANCH" }), 0);
+  sendTxn(tx({ account: "ACC-2", type: "DEPOSIT", amount: 800, channel: "BRANCH" }));
+  enqueue(async () => {
+    $("#f-fast").checked = wasFast;
+    narrate("sample data", "Two sample deposits are already booked (ACC-1 2,500 · ACC-2 800). Pick a quick scenario or send your own.");
+  });
+}
+init();
+})();
+</script>

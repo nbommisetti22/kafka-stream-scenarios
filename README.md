@@ -36,6 +36,14 @@ different set of Kafka concepts in a realistic banking use case.
             └──► bank.fraud.cases  (HIGH / CRITICAL)
 ```
 
+## Interactive explorer
+
+[`docs/scenario-explorer.html`](docs/scenario-explorer.html) is a single-page guide to every
+scenario. It has a pipeline simulator that follows the services' real rules (including Kafka's
+murmur2 partitioner, so the partition numbers match a real broker), a scenario index with the code
+for each one, and step-through labs for partitioning, blocking vs non-blocking retries and
+exactly-once. Open it in a browser; it needs no build and no running Kafka.
+
 ## Modules
 
 | Module | Port | Role |
