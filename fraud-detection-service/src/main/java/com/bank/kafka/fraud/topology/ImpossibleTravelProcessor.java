@@ -3,6 +3,7 @@ package com.bank.kafka.fraud.topology;
 import com.bank.kafka.common.event.FraudAlert;
 import com.bank.kafka.common.event.Severity;
 import com.bank.kafka.common.event.TransactionEvent;
+import com.bank.kafka.common.event.TransactionType;
 import org.apache.kafka.streams.processor.api.FixedKeyProcessor;
 import org.apache.kafka.streams.processor.api.FixedKeyProcessorContext;
 import org.apache.kafka.streams.processor.api.FixedKeyRecord;
@@ -39,7 +40,9 @@ public class ImpossibleTravelProcessor implements FixedKeyProcessor<String, Tran
     @Override
     public void process(FixedKeyRecord<String, TransactionEvent> record) {
         TransactionEvent current = record.value();
-        if (current == null || current.country() == null) {
+        // A transfer credit leg carries the sender's country: it says nothing about where this
+        // account's owner is, so it must not be used as a location signal.
+        if (current == null || current.country() == null || current.type() == TransactionType.TRANSFER_IN) {
             return;
         }
         Instant currentTime = Instant.ofEpochMilli(record.timestamp());

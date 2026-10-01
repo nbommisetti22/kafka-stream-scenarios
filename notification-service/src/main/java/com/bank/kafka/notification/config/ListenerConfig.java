@@ -11,6 +11,8 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ConsumerAwareRebalanceListener;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.Collection;
 
@@ -18,6 +20,16 @@ import java.util.Collection;
 public class ListenerConfig {
 
     private static final Logger log = LoggerFactory.getLogger(ListenerConfig.class);
+
+    /**
+     * Blocking retries with back-off for all record and batch listeners (the {@code @RetryableTopic}
+     * listener has its own non-blocking strategy). After the retries the record is logged and skipped:
+     * a receipt or e-mail is not worth stopping the partition for.
+     */
+    @Bean
+    public DefaultErrorHandler errorHandler() {
+        return new DefaultErrorHandler(new FixedBackOff(1000L, 3L));
+    }
 
     /**
      * <b>Batch listener with manual acknowledgment.</b> The listener receives up to
@@ -29,7 +41,7 @@ public class ListenerConfig {
             ConcurrentKafkaListenerContainerFactoryConfigurer configurer,
             ConsumerFactory<Object, Object> consumerFactory) {
         ConcurrentKafkaListenerContainerFactory<Object, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        configurer.configure(factory, consumerFactory);
+        configurer.configure(factory, consumerFactory);   // also applies the error handler bean
         factory.setBatchListener(true);
         factory.setConcurrency(3);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);

@@ -117,6 +117,15 @@ class FraudDetectionTopologyTest {
     }
 
     @Test
+    void incomingTransferFromAbroadIsNotTravel() {
+        send("ACC-1", TransactionType.PAYMENT, "20", "US", T0);
+        send("ACC-1", TransactionType.TRANSFER_IN, "30", "SG", T0.plus(Duration.ofMinutes(1)));
+        send("ACC-1", TransactionType.PAYMENT, "20", "US", T0.plus(Duration.ofMinutes(2)));
+
+        assertThat(alerts.isEmpty()).isTrue();
+    }
+
+    @Test
     void travelAfterWindowIsFine() {
         send("ACC-1", TransactionType.PAYMENT, "20", "US", T0);
         send("ACC-1", TransactionType.PAYMENT, "30", "FR", T0.plus(Duration.ofHours(9)));
